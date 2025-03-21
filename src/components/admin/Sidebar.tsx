@@ -60,6 +60,44 @@ const Sidebar = ({
       path: "/admin/dashboard",
     },
     {
+      id: "tutorials",
+      label: "Tutorials",
+      icon: <FileText size={20} />,
+      path: "/tutorial",
+      submenu: [
+        {
+          id: "intro",
+          label: "Introduction",
+          path: "/tutorial",
+        },
+        {
+          id: "setup",
+          label: "Setup Guide",
+          path: "/tutorial/setup",
+        },
+        {
+          id: "chat-widget",
+          label: "Chat Widget",
+          path: "/tutorial/chat-widget",
+        },
+        {
+          id: "admin-dashboard",
+          label: "Admin Dashboard",
+          path: "/tutorial/admin-dashboard",
+        },
+        {
+          id: "embedding",
+          label: "Embedding Options",
+          path: "/tutorial/embedding",
+        },
+        {
+          id: "websocket",
+          label: "WebSocket Demo",
+          path: "/tutorial/websocket",
+        },
+      ],
+    },
+    {
       id: "widget",
       label: "Widget Config",
       icon: <Settings size={20} />,
