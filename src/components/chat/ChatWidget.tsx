@@ -76,7 +76,7 @@ const ChatWidget = ({
           timestamp: new Date(msg.timestamp),
           status: "sent",
         }));
-        setMessages(historyMessages);
+        setMessages(historyMessages as Message[]);
       }
     });
 

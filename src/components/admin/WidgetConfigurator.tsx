@@ -35,7 +35,7 @@ import { Slider } from "@/components/ui/slider";
 import {
   ColorPicker as UIColorPicker,
   ColorSwatch as UIColorSwatch,
-} from "../ui/color-picker";
+} from "@/components/ui/color-picker";
 import { Separator } from "@/components/ui/separator";
 import {
   MessageSquare,

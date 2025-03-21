@@ -1,8 +1,8 @@
 import React from "react";
 import { Bell, Search, Settings, User } from "lucide-react";
-import { useAuth } from "../../context/AuthContext";
-import { Input } from "../ui/input";
-import { Button } from "../ui/button";
+import { useAuth } from "@/context/AuthContext";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,10 +10,10 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
-import { Badge } from "../ui/badge";
-import { cn } from "../../lib/utils";
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 interface DashboardHeaderProps {
   title?: string;

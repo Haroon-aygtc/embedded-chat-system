@@ -16,7 +16,7 @@ export interface ChatSession {
 }
 
 export interface WebSocketMessage {
-  type: "message" | "typing" | "read" | "error" | "connection" | "history";
+  type: "message" | "typing" | "read" | "error" | "connection" | "history" | "history_request";
   payload: any;
   timestamp: string;
 }

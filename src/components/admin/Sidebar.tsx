@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { cn } from "../../lib/utils";
-import { useAuth } from "../../context/AuthContext";
+import { cn } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
 import {
   LayoutDashboard,
   Settings,
@@ -14,15 +14,14 @@ import {
   ChevronRight,
   LogOut,
 } from "lucide-react";
-import { Button } from "../ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
-import { Separator } from "../ui/separator";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "../ui/tooltip";
+} from "@/components/ui/tooltip";
 
 interface SidebarProps {
   collapsed?: boolean;

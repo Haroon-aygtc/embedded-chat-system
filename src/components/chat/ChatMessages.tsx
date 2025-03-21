@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Avatar } from "../ui/avatar";
-import { ScrollArea } from "../ui/scroll-area";
-import { Skeleton } from "../ui/skeleton";
-import { cn } from "../../lib/utils";
+import { Avatar } from "@/components/ui/avatar";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import { Bot, User } from "lucide-react";
-import { Message } from "../../types/chat";
+import { Message } from "@/types/chat";
 
 type ChatMessagesProps = {
   messages?: Message[];

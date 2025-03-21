@@ -298,7 +298,7 @@ const PromptTemplates = () => {
                         />
                       </FormControl>
                       <FormDescription>
-                        Use {{ variable }} syntax for dynamic content
+                        Use {'{{'}variable{'}}'}  syntax for dynamic content
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
