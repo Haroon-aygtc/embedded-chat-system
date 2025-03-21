@@ -35,8 +35,11 @@ const EmbedCodeGenerator = lazy(
 );
 const SystemSettings = lazy(() => import("../components/admin/SystemSettings"));
 
+// Lazy-loaded user components
+const ProfilePage = lazy(() => import("../pages/user/profile"));
+
 // Loading fallback
-const AdminLoadingFallback = () => (
+const LoadingFallback = () => (
   <div className="flex items-center justify-center h-full w-full p-8">
     <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
   </div>
@@ -58,6 +61,18 @@ const AppRoutes = () => {
       <Route path="/chat" element={<ChatPage />} />
       <Route path="/chat-embed" element={<ChatEmbedPage />} />
 
+      {/* User routes */}
+      <Route
+        path="/user/profile"
+        element={
+          <ProtectedRoute>
+            <Suspense fallback={<LoadingFallback />}>
+              <ProfilePage />
+            </Suspense>
+          </ProtectedRoute>
+        }
+      />
+
       {/* Admin routes with shared layout */}
       <Route
         path="/admin"
@@ -70,7 +85,7 @@ const AppRoutes = () => {
         <Route
           path="dashboard"
           element={
-            <Suspense fallback={<AdminLoadingFallback />}>
+            <Suspense fallback={<LoadingFallback />}>
               <Dashboard />
             </Suspense>
           }
@@ -78,7 +93,7 @@ const AppRoutes = () => {
         <Route
           path="users"
           element={
-            <Suspense fallback={<AdminLoadingFallback />}>
+            <Suspense fallback={<LoadingFallback />}>
               <UserManagement />
             </Suspense>
           }
@@ -86,7 +101,7 @@ const AppRoutes = () => {
         <Route
           path="widget-config"
           element={
-            <Suspense fallback={<AdminLoadingFallback />}>
+            <Suspense fallback={<LoadingFallback />}>
               <WidgetConfigurator />
             </Suspense>
           }
@@ -94,7 +109,7 @@ const AppRoutes = () => {
         <Route
           path="context-rules"
           element={
-            <Suspense fallback={<AdminLoadingFallback />}>
+            <Suspense fallback={<LoadingFallback />}>
               <ContextRulesEditor />
             </Suspense>
           }
@@ -102,7 +117,7 @@ const AppRoutes = () => {
         <Route
           path="templates"
           element={
-            <Suspense fallback={<AdminLoadingFallback />}>
+            <Suspense fallback={<LoadingFallback />}>
               <PromptTemplates />
             </Suspense>
           }
@@ -110,7 +125,7 @@ const AppRoutes = () => {
         <Route
           path="embed-code"
           element={
-            <Suspense fallback={<AdminLoadingFallback />}>
+            <Suspense fallback={<LoadingFallback />}>
               <EmbedCodeGenerator />
             </Suspense>
           }
@@ -118,7 +133,7 @@ const AppRoutes = () => {
         <Route
           path="api-keys"
           element={
-            <Suspense fallback={<AdminLoadingFallback />}>
+            <Suspense fallback={<LoadingFallback />}>
               <ApiKeysPage />
             </Suspense>
           }
@@ -126,7 +141,7 @@ const AppRoutes = () => {
         <Route
           path="moderation/queue"
           element={
-            <Suspense fallback={<AdminLoadingFallback />}>
+            <Suspense fallback={<LoadingFallback />}>
               <ModerationQueue />
             </Suspense>
           }
@@ -134,7 +149,7 @@ const AppRoutes = () => {
         <Route
           path="moderation/rules"
           element={
-            <Suspense fallback={<AdminLoadingFallback />}>
+            <Suspense fallback={<LoadingFallback />}>
               <ModerationRules />
             </Suspense>
           }
@@ -142,7 +157,7 @@ const AppRoutes = () => {
         <Route
           path="settings"
           element={
-            <Suspense fallback={<AdminLoadingFallback />}>
+            <Suspense fallback={<LoadingFallback />}>
               <SystemSettings />
             </Suspense>
           }

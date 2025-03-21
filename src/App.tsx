@@ -29,6 +29,10 @@ function App() {
     };
   }, []);
 
+  // Extract the Tempo routes outside of the JSX
+  // Important: useRoutes must be called unconditionally
+  const tempoRoutes = useRoutes(import.meta.env.VITE_TEMPO ? routes : []);
+
   return (
     <ErrorBoundary>
       <AuthProvider>
@@ -41,7 +45,7 @@ function App() {
         >
           <div className="app-container">
             {/* For the tempo routes */}
-            {import.meta.env.VITE_TEMPO && useRoutes(routes)}
+            {import.meta.env.VITE_TEMPO && tempoRoutes}
 
             <Routes>
               {/* Add this before any catchall route */}
