@@ -1,12 +1,13 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "../ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import {
   BarChart,
   LineChart,
@@ -15,8 +16,22 @@ import {
   Users,
   MessageSquare,
   Clock,
+  Calendar,
+  Download,
+  RefreshCw,
+  Filter,
 } from "lucide-react";
-import { Progress } from "../ui/progress";
+import { Progress } from "@/components/ui/progress";
+import RealTimeMetrics from "./RealTimeMetrics";
+import AIModelPerformance from "./AIModelPerformance";
+import KnowledgeBaseInsights from "./KnowledgeBaseInsights";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface AnalyticsCardProps {
   title: string;
@@ -262,26 +277,57 @@ const AnalyticsDashboard = ({
   modelDistribution,
   contextBreakdown,
 }: AnalyticsDashboardProps) => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [timeRange, setTimeRange] = useState("7d");
+
+  const handleRefresh = () => {
+    setIsLoading(true);
+    // Simulate API call
+    setTimeout(() => {
+      setIsLoading(false);
+    }, 1500);
+  };
+
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">
+    <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">
           Analytics Dashboard
         </h1>
-        <p className="text-muted-foreground">
-          Monitor your chat widget performance and usage statistics
-        </p>
+        <div className="flex items-center gap-2">
+          <Select value={timeRange} onValueChange={setTimeRange}>
+            <SelectTrigger className="w-[180px]">
+              <Calendar className="mr-2 h-4 w-4" />
+              <SelectValue placeholder="Select time range" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="24h">Last 24 hours</SelectItem>
+              <SelectItem value="7d">Last 7 days</SelectItem>
+              <SelectItem value="30d">Last 30 days</SelectItem>
+              <SelectItem value="90d">Last 90 days</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline">
+            <Filter className="mr-2 h-4 w-4" />
+            Filters
+          </Button>
+          <Button variant="outline">
+            <Download className="mr-2 h-4 w-4" />
+            Export
+          </Button>
+        </div>
       </div>
 
-      <Tabs defaultValue="overview" className="mb-8">
+      <Tabs defaultValue="overview" className="space-y-4">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="realtime">Real-Time</TabsTrigger>
+          <TabsTrigger value="ai-models">AI Models</TabsTrigger>
+          <TabsTrigger value="knowledge-base">Knowledge Base</TabsTrigger>
           <TabsTrigger value="conversations">Conversations</TabsTrigger>
-          <TabsTrigger value="queries">Queries</TabsTrigger>
-          <TabsTrigger value="performance">Performance</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="space-y-8 mt-6">
+        <TabsContent value="overview" className="space-y-6">
           <ConversationStats {...conversationStats} />
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -292,7 +338,29 @@ const AnalyticsDashboard = ({
           </div>
         </TabsContent>
 
-        <TabsContent value="conversations" className="mt-6">
+        <TabsContent value="realtime" className="space-y-4">
+          <RealTimeMetrics
+            isLoading={isLoading}
+            onRefresh={handleRefresh}
+            lastUpdated={new Date().toLocaleTimeString()}
+          />
+        </TabsContent>
+
+        <TabsContent value="ai-models" className="space-y-4">
+          <AIModelPerformance
+            modelDistribution={modelDistribution}
+            contextBreakdown={contextBreakdown}
+          />
+        </TabsContent>
+
+        <TabsContent value="knowledge-base" className="space-y-4">
+          <KnowledgeBaseInsights
+            isLoading={isLoading}
+            onRefresh={handleRefresh}
+          />
+        </TabsContent>
+
+        <TabsContent value="conversations" className="space-y-4">
           <Card className="bg-white">
             <CardHeader>
               <CardTitle>Conversation Details</CardTitle>
@@ -305,44 +373,6 @@ const AnalyticsDashboard = ({
                 <div className="text-center text-muted-foreground">
                   <MessageSquare className="mx-auto h-12 w-12 text-gray-400" />
                   <p className="mt-2">Conversation details would appear here</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="queries" className="mt-6">
-          <Card className="bg-white">
-            <CardHeader>
-              <CardTitle>Query Analysis</CardTitle>
-              <CardDescription>
-                Detailed breakdown of user queries
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[400px] w-full flex items-center justify-center">
-                <div className="text-center text-muted-foreground">
-                  <Activity className="mx-auto h-12 w-12 text-gray-400" />
-                  <p className="mt-2">Query analysis would appear here</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="performance" className="mt-6">
-          <Card className="bg-white">
-            <CardHeader>
-              <CardTitle>System Performance</CardTitle>
-              <CardDescription>
-                Response times and system metrics
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[400px] w-full flex items-center justify-center">
-                <div className="text-center text-muted-foreground">
-                  <Activity className="mx-auto h-12 w-12 text-gray-400" />
-                  <p className="mt-2">Performance metrics would appear here</p>
                 </div>
               </div>
             </CardContent>

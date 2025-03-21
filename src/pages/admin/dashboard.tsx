@@ -1,18 +1,13 @@
 import React, { useState } from "react";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../../components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "../../components/ui/card";
-import { Button } from "../../components/ui/button";
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   LayoutDashboard,
   Settings,
@@ -20,15 +15,22 @@ import {
   Code,
   BarChart3,
   FileText,
+  Database,
+  BookOpen,
+  History,
 } from "lucide-react";
 
-import Sidebar from "../../components/admin/Sidebar";
-import DashboardHeader from "../../components/admin/DashboardHeader";
-import WidgetConfigurator from "../../components/admin/WidgetConfigurator";
-import ContextRulesEditor from "../../components/admin/ContextRulesEditor";
-import PromptTemplates from "../../components/admin/PromptTemplates";
-import AnalyticsDashboard from "../../components/admin/AnalyticsDashboard";
-import EmbedCodeGenerator from "../../components/admin/EmbedCodeGenerator";
+import Sidebar from "@/components/admin/Sidebar";
+import DashboardHeader from "@/components/admin/DashboardHeader";
+import WidgetConfigurator from "@/components/admin/WidgetConfigurator";
+import ContextRulesEditor from "@/components/admin/ContextRulesEditor";
+import PromptTemplates from "@/components/admin/PromptTemplates";
+import AnalyticsDashboard from "@/components/admin/AnalyticsDashboard";
+import EmbedCodeGenerator from "@/components/admin/EmbedCodeGenerator";
+import KnowledgeBaseManager from "@/components/admin/KnowledgeBaseManager";
+import AIInteractionLogs from "@/components/admin/AIInteractionLogs";
+import SystemSettings from "@/components/admin/SystemSettings";
+import UserManagement from "@/components/admin/UserManagement";
 
 const Dashboard = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -63,7 +65,7 @@ const Dashboard = () => {
             onValueChange={setActiveSection}
             className="w-full"
           >
-            <TabsList className="grid w-full grid-cols-6 mb-8">
+            <TabsList className="grid w-full grid-cols-5 mb-8">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <LayoutDashboard className="h-4 w-4" />
                 <span className="hidden sm:inline">Overview</span>
@@ -83,10 +85,6 @@ const Dashboard = () => {
                 <FileText className="h-4 w-4" />
                 <span className="hidden sm:inline">Templates</span>
               </TabsTrigger>
-              <TabsTrigger value="embed" className="flex items-center gap-2">
-                <Code className="h-4 w-4" />
-                <span className="hidden sm:inline">Embed Code</span>
-              </TabsTrigger>
               <TabsTrigger
                 value="analytics"
                 className="flex items-center gap-2"
@@ -95,6 +93,99 @@ const Dashboard = () => {
                 <span className="hidden sm:inline">Analytics</span>
               </TabsTrigger>
             </TabsList>
+
+            <div className="mb-6 flex flex-wrap gap-2">
+              <Button
+                variant={activeSection === "overview" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveSection("overview")}
+                className="flex items-center gap-2"
+              >
+                <LayoutDashboard className="h-4 w-4" />
+                Overview
+              </Button>
+              <Button
+                variant={activeSection === "widget" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveSection("widget")}
+                className="flex items-center gap-2"
+              >
+                <Settings className="h-4 w-4" />
+                Widget Config
+              </Button>
+              <Button
+                variant={activeSection === "context" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveSection("context")}
+                className="flex items-center gap-2"
+              >
+                <MessageSquare className="h-4 w-4" />
+                Context Rules
+              </Button>
+              <Button
+                variant={activeSection === "templates" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveSection("templates")}
+                className="flex items-center gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                Templates
+              </Button>
+              <Button
+                variant={activeSection === "knowledge" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveSection("knowledge")}
+                className="flex items-center gap-2"
+              >
+                <Database className="h-4 w-4" />
+                Knowledge Base
+              </Button>
+              <Button
+                variant={activeSection === "embed" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveSection("embed")}
+                className="flex items-center gap-2"
+              >
+                <Code className="h-4 w-4" />
+                Embed Code
+              </Button>
+              <Button
+                variant={activeSection === "logs" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveSection("logs")}
+                className="flex items-center gap-2"
+              >
+                <History className="h-4 w-4" />
+                AI Logs
+              </Button>
+              <Button
+                variant={activeSection === "analytics" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveSection("analytics")}
+                className="flex items-center gap-2"
+              >
+                <BarChart3 className="h-4 w-4" />
+                Analytics
+              </Button>
+              <Button
+                variant={activeSection === "settings" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveSection("settings")}
+                className="flex items-center gap-2"
+              >
+                <Settings className="h-4 w-4" />
+                Settings
+              </Button>
+              <Button
+                variant={activeSection === "users" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveSection("users")}
+                className="flex items-center gap-2"
+              >
+                <BookOpen className="h-4 w-4" />
+                Users
+              </Button>
+            </div>
 
             <TabsContent value="overview" className="space-y-6">
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -235,12 +326,28 @@ const Dashboard = () => {
               <PromptTemplates />
             </TabsContent>
 
+            <TabsContent value="knowledge">
+              <KnowledgeBaseManager />
+            </TabsContent>
+
             <TabsContent value="embed">
               <EmbedCodeGenerator />
             </TabsContent>
 
+            <TabsContent value="logs">
+              <AIInteractionLogs />
+            </TabsContent>
+
             <TabsContent value="analytics">
               <AnalyticsDashboard />
+            </TabsContent>
+
+            <TabsContent value="settings">
+              <SystemSettings />
+            </TabsContent>
+
+            <TabsContent value="users">
+              <UserManagement />
             </TabsContent>
           </Tabs>
         </main>
