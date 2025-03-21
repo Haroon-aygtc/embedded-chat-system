@@ -1,8 +1,8 @@
 import { Suspense } from "react";
 import { Routes, Route, useRoutes } from "react-router-dom";
 import routes from "tempo-routes";
-import AppRoutes from "./routes";
-import { AuthProvider } from "./context/AuthContext";
+import AppRoutes from "@/routes";
+import { AuthProvider } from "@/context/AuthContext";
 
 function App() {
   return (
@@ -10,13 +10,11 @@ function App() {
       <Suspense fallback={<p>Loading...</p>}>
         <div className="app-container">
           {/* For the tempo routes */}
-          {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
+          {useRoutes(routes)}
 
           <Routes>
             {/* Add this before any catchall route */}
-            {import.meta.env.VITE_TEMPO === "true" && (
-              <Route path="/tempobook/*" />
-            )}
+            <Route path="/tempobook/*" />
 
             {/* Your existing routes */}
             <Route path="/*" element={<AppRoutes />} />

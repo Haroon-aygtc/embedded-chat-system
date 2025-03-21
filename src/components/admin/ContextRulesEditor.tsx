@@ -2,7 +2,17 @@ import React, { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, Trash2, Save, AlertCircle, Info, Edit, Eye, Loader2, X } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Save,
+  AlertCircle,
+  Info,
+  Edit,
+  Eye,
+  Loader2,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -99,7 +109,10 @@ const ContextRulesEditor = () => {
   const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false);
   const [isTestDialogOpen, setIsTestDialogOpen] = useState(false);
   const [testQuery, setTestQuery] = useState("");
-  const [testResult, setTestResult] = useState<{ result: string; matches: string[] } | null>(null);
+  const [testResult, setTestResult] = useState<{
+    result: string;
+    matches: string[];
+  } | null>(null);
   const [isTestingRule, setIsTestingRule] = useState(false);
 
   const {
@@ -142,7 +155,9 @@ const ContextRulesEditor = () => {
   const handleCreateRule = async (data: FormContextRule) => {
     try {
       setIsSaving(true);
-      const newRule = await contextRulesApi.create(data as Omit<ContextRule, "id" | "createdAt" | "updatedAt">);
+      const newRule = await contextRulesApi.create(
+        data as Omit<ContextRule, "id" | "createdAt" | "updatedAt">,
+      );
       setRules([...rules, newRule]);
       setActiveTab("rules-list");
       reset();
@@ -160,8 +175,13 @@ const ContextRulesEditor = () => {
 
     try {
       setIsSaving(true);
-      const updatedRule = await contextRulesApi.update(selectedRule.id, data as Partial<ContextRule>);
-      setRules(rules.map(rule => rule.id === updatedRule.id ? updatedRule : rule));
+      const updatedRule = await contextRulesApi.update(
+        selectedRule.id,
+        data as Partial<ContextRule>,
+      );
+      setRules(
+        rules.map((rule) => (rule.id === updatedRule.id ? updatedRule : rule)),
+      );
       setSelectedRule(null);
       setActiveTab("rules-list");
       reset();
@@ -180,7 +200,7 @@ const ContextRulesEditor = () => {
     try {
       setIsLoading(true);
       await contextRulesApi.delete(id);
-      setRules(rules.filter(rule => rule.id !== id));
+      setRules(rules.filter((rule) => rule.id !== id));
       setError(null);
     } catch (error) {
       console.error("Error deleting context rule:", error);
@@ -211,7 +231,10 @@ const ContextRulesEditor = () => {
 
   const handleRemoveKeyword = (keyword: string) => {
     const currentKeywords = watch("keywords") || [];
-    setValue("keywords", currentKeywords.filter(k => k !== keyword));
+    setValue(
+      "keywords",
+      currentKeywords.filter((k) => k !== keyword),
+    );
   };
 
   const handleAddExcludedTopic = () => {
@@ -224,7 +247,10 @@ const ContextRulesEditor = () => {
 
   const handleRemoveExcludedTopic = (topic: string) => {
     const currentTopics = watch("excludedTopics") || [];
-    setValue("excludedTopics", currentTopics.filter(t => t !== topic));
+    setValue(
+      "excludedTopics",
+      currentTopics.filter((t) => t !== topic),
+    );
   };
 
   const handleAddFilter = () => {
@@ -237,7 +263,10 @@ const ContextRulesEditor = () => {
 
   const handleRemoveFilter = (index: number) => {
     const currentFilters = watch("responseFilters") || [];
-    setValue("responseFilters", currentFilters.filter((_, i) => i !== index));
+    setValue(
+      "responseFilters",
+      currentFilters.filter((_, i) => i !== index),
+    );
   };
 
   const handleTestRule = async () => {
@@ -262,7 +291,10 @@ const ContextRulesEditor = () => {
   };
 
   const formattedPromptTemplate = (template: string) => {
-    return template.replace("{{ userQuery }}", `<span class="text-blue-500 font-semibold">${sampleUserQuery}</span>`);
+    return template.replace(
+      "{{ userQuery }}",
+      `<span class="text-blue-500 font-semibold">${sampleUserQuery}</span>`,
+    );
   };
 
   return (
@@ -415,35 +447,34 @@ const ContextRulesEditor = () => {
                         </div>
                       </div>
 
-                      {rule.excludedTopics && rule.excludedTopics.length > 0 && (
-                        <div>
-                          <h4 className="text-sm font-semibold mb-1">
-                            Excluded Topics
-                          </h4>
-                          <div className="flex flex-wrap gap-1">
-                            {rule.excludedTopics.map((topic) => (
-                              <Badge
-                                key={topic}
-                                variant="outline"
-                                className="bg-destructive/10 text-destructive"
-                              >
-                                {topic}
-                              </Badge>
-                            ))}
+                      {rule.excludedTopics &&
+                        rule.excludedTopics.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-semibold mb-1">
+                              Excluded Topics
+                            </h4>
+                            <div className="flex flex-wrap gap-1">
+                              {rule.excludedTopics.map((topic) => (
+                                <Badge
+                                  key={topic}
+                                  variant="outline"
+                                  className="bg-destructive/10 text-destructive"
+                                >
+                                  {topic}
+                                </Badge>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
                     </div>
                   </CardContent>
                   <CardFooter className="border-t pt-3 text-xs text-muted-foreground">
                     <div className="w-full flex justify-between">
                       <span>
-                        Created:{" "}
-                        {new Date(rule.createdAt).toLocaleDateString()}
+                        Created: {new Date(rule.createdAt).toLocaleDateString()}
                       </span>
                       <span>
-                        Updated:{" "}
-                        {new Date(rule.updatedAt).toLocaleDateString()}
+                        Updated: {new Date(rule.updatedAt).toLocaleDateString()}
                       </span>
                     </div>
                   </CardFooter>
@@ -467,7 +498,7 @@ const ContextRulesEditor = () => {
             </CardHeader>
             <form
               onSubmit={handleSubmit(
-                selectedRule ? handleUpdateRule : handleCreateRule
+                selectedRule ? handleUpdateRule : handleCreateRule,
               )}
             >
               <CardContent className="space-y-6">
@@ -506,7 +537,10 @@ const ContextRulesEditor = () => {
                       <Select
                         defaultValue={watch("contextType")}
                         onValueChange={(value) =>
-                          setValue("contextType", value as "business" | "general")
+                          setValue(
+                            "contextType",
+                            value as "business" | "general",
+                          )
                         }
                       >
                         <SelectTrigger>
@@ -588,7 +622,7 @@ const ContextRulesEditor = () => {
 
                     <div className="space-y-2">
                       <div className="flex justify-between items-center">
-                        <Label>Excluded Topics</Label>  
+                        <Label>Excluded Topics</Label>
                         <Button
                           type="button"
                           variant="outline"
@@ -602,7 +636,9 @@ const ContextRulesEditor = () => {
                         <div className="flex space-x-2">
                           <Input
                             value={newExcludedTopic}
-                            onChange={(e) => setNewExcludedTopic(e.target.value)}
+                            onChange={(e) =>
+                              setNewExcludedTopic(e.target.value)
+                            }
                             placeholder="Enter topic"
                             className="flex-1"
                           />
@@ -657,7 +693,10 @@ const ContextRulesEditor = () => {
                           <Select
                             value={newFilter.type}
                             onValueChange={(value) =>
-                              setNewFilter({ ...newFilter, type: value as "keyword" | "regex" | "semantic" })
+                              setNewFilter({
+                                ...newFilter,
+                                type: value as "keyword" | "regex" | "semantic",
+                              })
                             }
                           >
                             <SelectTrigger>
@@ -671,7 +710,12 @@ const ContextRulesEditor = () => {
                           </Select>
                           <Input
                             value={newFilter.value}
-                            onChange={(e) => setNewFilter({ ...newFilter, value: e.target.value })}
+                            onChange={(e) =>
+                              setNewFilter({
+                                ...newFilter,
+                                value: e.target.value,
+                              })
+                            }
                             placeholder="Enter filter value"
                             className="flex-1"
                           />
@@ -702,7 +746,7 @@ const ContextRulesEditor = () => {
                                 : filter.value}
                             <Button
                               type="button"
-                              variant="ghost" 
+                              variant="ghost"
                               size="icon"
                               onClick={() => handleRemoveFilter(index)}
                             >
@@ -728,6 +772,4 @@ const ContextRulesEditor = () => {
   );
 };
 
-  export default ContextRulesEditor;
-
- 
+export default ContextRulesEditor;
