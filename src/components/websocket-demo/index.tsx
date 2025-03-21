@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -26,10 +26,14 @@ export default function WebSocketDemo() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState("");
   const [queuedCount, setQueuedCount] = useState(0);
+  const messageCallbackRef = useRef<(() => void) | null>(null);
+  const connectCallbackRef = useRef<(() => void) | null>(null);
+  const disconnectCallbackRef = useRef<(() => void) | null>(null);
+  const errorCallbackRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     // Set up event listeners
-    const unsubscribeMessage = websocketService.onMessage((data) => {
+    const messageCallback = (data: any) => {
       setMessages((prev) => [
         ...prev,
         {
@@ -39,21 +43,28 @@ export default function WebSocketDemo() {
           sender: "server",
         },
       ]);
-    });
+    };
 
-    const unsubscribeConnect = websocketService.onConnect(() => {
+    const connectCallback = () => {
       setConnectionState(websocketService.getConnectionState());
       setQueuedCount(websocketService.getQueuedMessageCount());
-    });
+    };
 
-    const unsubscribeDisconnect = websocketService.onDisconnect(() => {
+    const disconnectCallback = () => {
       setConnectionState(websocketService.getConnectionState());
       setQueuedCount(websocketService.getQueuedMessageCount());
-    });
+    };
 
-    const unsubscribeError = websocketService.onError(() => {
+    const errorCallback = () => {
       setConnectionState(websocketService.getConnectionState());
-    });
+    };
+
+    // Register callbacks with the websocket service
+    messageCallbackRef.current = websocketService.onMessage(messageCallback);
+    connectCallbackRef.current = websocketService.onConnect(connectCallback);
+    disconnectCallbackRef.current =
+      websocketService.onDisconnect(disconnectCallback);
+    errorCallbackRef.current = websocketService.onError(errorCallback);
 
     // Check status every second
     const interval = setInterval(() => {
@@ -62,10 +73,11 @@ export default function WebSocketDemo() {
     }, 1000);
 
     return () => {
-      unsubscribeMessage();
-      unsubscribeConnect();
-      unsubscribeDisconnect();
-      unsubscribeError();
+      // Clean up event listeners
+      if (messageCallbackRef.current) messageCallbackRef.current();
+      if (connectCallbackRef.current) connectCallbackRef.current();
+      if (disconnectCallbackRef.current) disconnectCallbackRef.current();
+      if (errorCallbackRef.current) errorCallbackRef.current();
       clearInterval(interval);
     };
   }, []);

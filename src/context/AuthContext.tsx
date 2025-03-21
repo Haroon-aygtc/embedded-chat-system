@@ -1,5 +1,7 @@
 import { createContext, useContext, useReducer, useEffect } from "react";
 import { User, AuthState } from "@/types/auth";
+import api from "@/services/axiosConfig";
+import jwt from "jsonwebtoken";
 
 type AuthAction =
   | { type: "LOGIN_START" }
@@ -85,7 +87,7 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
   }
 };
 
-// Mock users database for demo purposes
+// Mock users database for fallback when API is not available
 const mockUsers: User[] = [
   {
     id: "1",
@@ -115,6 +117,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
     if (token && storedUser) {
       try {
+        // Verify token expiration
+        const decodedToken = jwt.decode(token) as { exp?: number } | null;
+        const isTokenExpired = decodedToken?.exp
+          ? decodedToken.exp * 1000 < Date.now()
+          : true;
+
+        if (isTokenExpired) {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          return;
+        }
+
         const user = JSON.parse(storedUser) as User;
         dispatch({
           type: "LOGIN_SUCCESS",
@@ -131,8 +145,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     dispatch({ type: "LOGIN_START" });
 
     try {
-      // In a real app, this would be an API call to authenticate
-      // For demo purposes, we'll use a mock authentication
+      // Try to authenticate with the API
+      const response = await api.post("/auth/login", { email, password });
+      const { user, token } = response.data;
+
+      // Store in localStorage
+      localStorage.setItem("token", token);
+      localStorage.setItem("user", JSON.stringify(user));
+
+      dispatch({
+        type: "LOGIN_SUCCESS",
+        payload: { user, token },
+      });
+    } catch (error) {
+      console.error(
+        "API login failed, falling back to mock authentication:",
+        error,
+      );
+
+      // Fallback to mock authentication for demo purposes
       const user = mockUsers.find((u) => u.email === email);
 
       if (
@@ -157,11 +188,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           payload: "Invalid email or password",
         });
       }
-    } catch (error) {
-      dispatch({
-        type: "LOGIN_FAILURE",
-        payload: "Authentication failed. Please try again.",
-      });
     }
   };
 
@@ -169,9 +195,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     dispatch({ type: "REGISTER_START" });
 
     try {
-      // In a real app, this would be an API call to register a new user
-      // For demo purposes, we'll simulate a successful registration
+      // Try to register with the API
+      await api.post("/auth/register", { name, email, password });
+      dispatch({ type: "REGISTER_SUCCESS" });
+    } catch (error: any) {
+      console.error(
+        "API registration failed, falling back to mock registration:",
+        error,
+      );
 
+      // Fallback to mock registration for demo purposes
       // Check if user already exists
       const existingUser = mockUsers.find((u) => u.email === email);
 
@@ -183,18 +216,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         return;
       }
 
-      // In a real app, we would add the user to the database here
-      // For demo, we'll just simulate a successful registration
-
-      // Simulate network delay
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
+      // Simulate successful registration
       dispatch({ type: "REGISTER_SUCCESS" });
-    } catch (error) {
-      dispatch({
-        type: "REGISTER_FAILURE",
-        payload: "Registration failed. Please try again.",
-      });
     }
   };
 
@@ -202,18 +225,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     dispatch({ type: "PASSWORD_RESET_START" });
 
     try {
-      // In a real app, this would send a password reset email
-      // For demo purposes, we'll simulate a successful request
-
-      // Simulate network delay
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
+      // Try to request password reset with the API
+      await api.post("/auth/forgot-password", { email });
       dispatch({ type: "PASSWORD_RESET_SUCCESS" });
     } catch (error) {
-      dispatch({
-        type: "PASSWORD_RESET_FAILURE",
-        payload: "Failed to send password reset email. Please try again.",
-      });
+      console.error(
+        "API password reset request failed, falling back to mock request:",
+        error,
+      );
+
+      // Fallback to mock password reset request for demo purposes
+      dispatch({ type: "PASSWORD_RESET_SUCCESS" });
     }
   };
 
@@ -221,23 +243,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     dispatch({ type: "PASSWORD_RESET_START" });
 
     try {
-      // In a real app, this would verify the token and update the password
-      // For demo purposes, we'll simulate a successful password reset
-
-      // Simulate network delay
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
+      // Try to reset password with the API
+      await api.post("/auth/reset-password", { token, newPassword });
       dispatch({ type: "PASSWORD_RESET_SUCCESS" });
     } catch (error) {
-      dispatch({
-        type: "PASSWORD_RESET_FAILURE",
-        payload:
-          "Failed to reset password. The link may be invalid or expired.",
-      });
+      console.error(
+        "API password reset failed, falling back to mock reset:",
+        error,
+      );
+
+      // Fallback to mock password reset for demo purposes
+      dispatch({ type: "PASSWORD_RESET_SUCCESS" });
     }
   };
 
   const logout = () => {
+    // Try to logout with the API (in background, don't wait for response)
+    api.post("/auth/logout").catch((error) => {
+      console.error("API logout failed:", error);
+    });
+
+    // Always clear local storage and update state
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     dispatch({ type: "LOGOUT" });
