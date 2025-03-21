@@ -42,6 +42,8 @@ interface AIInteractionLog {
   context_rule?: {
     name: string;
   };
+  knowledge_base_results?: number;
+  knowledge_base_ids?: string[];
 }
 
 const AIInteractionLogs = () => {
@@ -338,12 +340,13 @@ const AIInteractionLogs = () => {
                   <TableHead>AI Response</TableHead>
                   <TableHead>Model</TableHead>
                   <TableHead>Context</TableHead>
+                  <TableHead>Knowledge Base</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-4">
+                    <TableCell colSpan={6} className="text-center py-4">
                       <div className="flex justify-center">
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                       </div>
@@ -351,7 +354,7 @@ const AIInteractionLogs = () => {
                   </TableRow>
                 ) : logs.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-4">
+                    <TableCell colSpan={6} className="text-center py-4">
                       No logs found
                     </TableCell>
                   </TableRow>
@@ -377,6 +380,15 @@ const AIInteractionLogs = () => {
                           </Badge>
                         ) : (
                           <Badge variant="outline">None</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {log.knowledge_base_results ? (
+                          <Badge variant="secondary">
+                            {log.knowledge_base_results} results
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">Not used</Badge>
                         )}
                       </TableCell>
                     </TableRow>

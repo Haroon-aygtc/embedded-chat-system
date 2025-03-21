@@ -12,6 +12,7 @@ import {
   Eye,
   Loader2,
   X,
+  Database,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,9 @@ import {
 
 import { contextRulesApi } from "@/services/apiService";
 import { ContextRule, ResponseFilter } from "@/types/contextRules";
+import knowledgeBaseService, {
+  KnowledgeBaseConfig,
+} from "@/services/knowledgeBaseService";
 
 // Define the schema for context rules
 const contextRuleSchema = z.object({
@@ -81,6 +85,9 @@ const contextRuleSchema = z.object({
       }),
     )
     .optional(),
+  useKnowledgeBases: z.boolean().optional().default(false),
+  knowledgeBaseIds: z.array(z.string()).optional().default([]),
+  preferredModel: z.string().optional(),
 });
 
 type FormContextRule = z.infer<typeof contextRuleSchema>;
@@ -114,6 +121,9 @@ const ContextRulesEditor = () => {
     matches: string[];
   } | null>(null);
   const [isTestingRule, setIsTestingRule] = useState(false);
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseConfig[]>(
+    [],
+  );
 
   const {
     register,
@@ -130,6 +140,8 @@ const ContextRulesEditor = () => {
       keywords: [],
       excludedTopics: [],
       responseFilters: [],
+      useKnowledgeBases: false,
+      knowledgeBaseIds: [],
     },
   });
 
@@ -156,7 +168,18 @@ const ContextRulesEditor = () => {
     };
 
     fetchRules();
+    fetchKnowledgeBases();
   }, []);
+
+  const fetchKnowledgeBases = async () => {
+    try {
+      const kbs = await knowledgeBaseService.getAllConfigs();
+      setKnowledgeBases(kbs.filter((kb) => kb.isActive));
+    } catch (error) {
+      console.error("Error fetching knowledge bases:", error);
+      setError("Failed to load knowledge bases. Please try again.");
+    }
+  };
 
   const handleCreateRule = async (data: FormContextRule) => {
     try {
@@ -241,6 +264,8 @@ const ContextRulesEditor = () => {
       keywords: rule.keywords || [],
       excludedTopics: rule.excludedTopics || [],
       responseFilters: rule.responseFilters || [],
+      useKnowledgeBases: rule.useKnowledgeBases || false,
+      knowledgeBaseIds: rule.knowledgeBaseIds || [],
     });
     setActiveTab("create-rule");
   };
@@ -291,6 +316,18 @@ const ContextRulesEditor = () => {
       "responseFilters",
       currentFilters.filter((_, i) => i !== index),
     );
+  };
+
+  const handleSwitchChange = (field: string, checked: boolean) => {
+    setValue(field as any, checked);
+  };
+
+  const handleKnowledgeBaseChange = (kbId: string, checked: boolean) => {
+    const currentIds = watch("knowledgeBaseIds") || [];
+    const newIds = checked
+      ? [...currentIds, kbId]
+      : currentIds.filter((id) => id !== kbId);
+    setValue("knowledgeBaseIds", newIds);
   };
 
   const handleTestRule = async () => {
@@ -496,6 +533,21 @@ const ContextRulesEditor = () => {
                             </div>
                           </div>
                         )}
+
+                      {rule.useKnowledgeBases && (
+                        <div>
+                          <h4 className="text-sm font-semibold mb-1 flex items-center gap-1">
+                            <Database className="h-3 w-3" />
+                            Knowledge Bases
+                          </h4>
+                          <Badge
+                            variant="secondary"
+                            className="bg-blue-100 text-blue-800"
+                          >
+                            Enabled
+                          </Badge>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                   <CardFooter className="border-t pt-3 text-xs text-muted-foreground">
@@ -588,10 +640,74 @@ const ContextRulesEditor = () => {
                         id="isActive"
                         checked={watch("isActive")}
                         onCheckedChange={(checked) =>
-                          setValue("isActive", checked)
+                          handleSwitchChange("isActive", checked)
                         }
                       />
                       <Label htmlFor="isActive">Active</Label>
+                    </div>
+
+                    <div className="space-y-4 border rounded-md p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <Database className="h-4 w-4" />
+                          <Label
+                            htmlFor="useKnowledgeBases"
+                            className="font-medium"
+                          >
+                            Knowledge Base Integration
+                          </Label>
+                        </div>
+                        <Switch
+                          id="useKnowledgeBases"
+                          checked={watch("useKnowledgeBases") || false}
+                          onCheckedChange={(checked) =>
+                            handleSwitchChange("useKnowledgeBases", checked)
+                          }
+                        />
+                      </div>
+
+                      {watch("useKnowledgeBases") && (
+                        <div className="mt-2 space-y-2">
+                          <Label>Select Knowledge Bases:</Label>
+                          {knowledgeBases.length === 0 ? (
+                            <div className="text-sm text-muted-foreground">
+                              No active knowledge bases available. Please create
+                              one in the Knowledge Base Manager.
+                            </div>
+                          ) : (
+                            <div className="space-y-2 max-h-[200px] overflow-y-auto border rounded-md p-2">
+                              {knowledgeBases.map((kb) => (
+                                <div
+                                  key={kb.id}
+                                  className="flex items-center space-x-2"
+                                >
+                                  <Switch
+                                    id={`kb-${kb.id}`}
+                                    checked={(
+                                      watch("knowledgeBaseIds") || []
+                                    ).includes(kb.id)}
+                                    onCheckedChange={(checked) =>
+                                      handleKnowledgeBaseChange(kb.id, checked)
+                                    }
+                                  />
+                                  <Label
+                                    htmlFor={`kb-${kb.id}`}
+                                    className="flex items-center space-x-2"
+                                  >
+                                    <span>{kb.name}</span>
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs"
+                                    >
+                                      {kb.type}
+                                    </Badge>
+                                  </Label>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 

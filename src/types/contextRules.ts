@@ -17,6 +17,9 @@ export interface ContextRule {
   excludedTopics: string[];
   promptTemplate: string;
   responseFilters: ResponseFilter[];
+  preferredModel?: string;
+  useKnowledgeBases?: boolean;
+  knowledgeBaseIds?: string[];
   createdAt: string;
   updatedAt: string;
 }

@@ -2,6 +2,8 @@ import axios from "axios";
 import { ContextRule } from "@/types/contextRules";
 import { PromptTemplate } from "@/types/promptTemplates";
 import logger from "@/utils/logger";
+import knowledgeBaseService, { QueryResult } from "./knowledgeBaseService";
+import supabase from "./supabaseClient";
 
 // Define the AI model types
 type AIModel = "gemini" | "huggingface";
@@ -76,13 +78,47 @@ export const aiService = {
   /**
    * Apply context rule filtering to the prompt
    */
-  applyContextRuleToPrompt: (
+  applyContextRuleToPrompt: async (
     query: string,
     contextRule?: ContextRule,
     promptTemplate?: PromptTemplate,
-  ): string => {
+    userId?: string,
+  ): Promise<string> => {
     if (!contextRule) {
       return query;
+    }
+
+    // Check if we should use knowledge bases for this context rule
+    let knowledgeBaseContext = "";
+    if (contextRule.useKnowledgeBases) {
+      const kbResults = await knowledgeBaseService.query({
+        query,
+        contextRuleId: contextRule.id,
+        userId,
+        limit: 5,
+      });
+
+      if (kbResults.length > 0) {
+        knowledgeBaseContext =
+          "\n\nRelevant information from knowledge base:\n" +
+          kbResults
+            .map(
+              (result, index) =>
+                `[${index + 1}] ${result.content} (Source: ${result.source})`,
+            )
+            .join("\n\n");
+
+        // Log the knowledge base query
+        await knowledgeBaseService.logQuery({
+          userId: userId || "anonymous",
+          query,
+          contextRuleId: contextRule.id,
+          knowledgeBaseIds: kbResults
+            .map((r) => r.metadata?.knowledgeBaseId)
+            .filter(Boolean) as string[],
+          results: kbResults.length,
+        });
+      }
     }
 
     // If there's a prompt template, use it
@@ -97,13 +133,23 @@ export const aiService = {
             `{{${variable}}}`,
             contextRule.description || "",
           );
+        } else if (variable === "knowledge_base" && knowledgeBaseContext) {
+          prompt = prompt.replace(`{{${variable}}}`, knowledgeBaseContext);
         }
       });
       return prompt;
     }
 
-    // Default context-aware prompt
-    return `You are an AI assistant focused on ${contextRule.name}. ${contextRule.description || ""}\n\nUser query: ${query}\n\nPlease provide a helpful response within the context of ${contextRule.name}.`;
+    // Default context-aware prompt with knowledge base information if available
+    let prompt = `You are an AI assistant focused on ${contextRule.name}. ${contextRule.description || ""}\n\nUser query: ${query}`;
+
+    if (knowledgeBaseContext) {
+      prompt += knowledgeBaseContext;
+    }
+
+    prompt += `\n\nPlease provide a helpful response within the context of ${contextRule.name}.`;
+
+    return prompt;
   },
 
   /**
@@ -257,15 +303,17 @@ export const aiService = {
     query: string,
     contextRule?: ContextRule,
     promptTemplate?: PromptTemplate,
+    userId?: string,
   ): Promise<AIModelResponse> => {
     // Determine which model to use
     const primaryModel = aiService.determineModel(query, contextRule);
 
-    // Apply context rule to the prompt
-    const prompt = aiService.applyContextRuleToPrompt(
+    // Apply context rule to the prompt, including knowledge base integration
+    const prompt = await aiService.applyContextRuleToPrompt(
       query,
       contextRule,
       promptTemplate,
+      userId,
     );
 
     try {
