@@ -1,12 +1,14 @@
 import { ContextRule } from "@/types/contextRules";
 import { PromptTemplate } from "@/types/promptTemplates";
 import api from "./axiosConfig";
+import supabase from "./supabaseClient";
+import userService from "./userService";
 
 // Context Rules API
 export const contextRulesApi = {
   getAll: async (): Promise<ContextRule[]> => {
     try {
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("context_rules")
         .select("*")
         .order("created_at", { ascending: false });
@@ -88,7 +90,7 @@ export const contextRulesApi = {
 
   getById: async (id: string): Promise<ContextRule> => {
     try {
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("context_rules")
         .select("*")
         .eq("id", id)
@@ -110,7 +112,6 @@ export const contextRulesApi = {
         useKnowledgeBases: data.use_knowledge_bases || false,
         knowledgeBaseIds: data.knowledge_base_ids || [],
         preferredModel: data.preferred_model,
-        version: data.version || 1,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       };
@@ -151,12 +152,11 @@ export const contextRulesApi = {
         use_knowledge_bases: rule.useKnowledgeBases,
         knowledge_base_ids: rule.knowledgeBaseIds,
         preferred_model: rule.preferredModel,
-        version: 1,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
 
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("context_rules")
         .insert([dbRule])
         .select()
@@ -171,7 +171,7 @@ export const contextRulesApi = {
         data: dbRule,
       };
 
-      const { error: versionError } = await window.supabase
+      const { error: versionError } = await supabase
         .from("context_rule_versions")
         .insert([versionData]);
 
@@ -193,7 +193,6 @@ export const contextRulesApi = {
         useKnowledgeBases: data.use_knowledge_bases || false,
         knowledgeBaseIds: data.knowledge_base_ids || [],
         preferredModel: data.preferred_model,
-        version: data.version || 1,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       };
@@ -222,7 +221,7 @@ export const contextRulesApi = {
   ): Promise<ContextRule> => {
     try {
       // Get the current version
-      const { data: currentRule, error: fetchError } = await window.supabase
+      const { data: currentRule, error: fetchError } = await supabase
         .from("context_rules")
         .select("*")
         .eq("id", id)
@@ -255,7 +254,7 @@ export const contextRulesApi = {
       dbRule.version = (currentRule.version || 1) + 1;
       dbRule.updated_at = new Date().toISOString();
 
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("context_rules")
         .update(dbRule)
         .eq("id", id)
@@ -271,7 +270,7 @@ export const contextRulesApi = {
         data: { ...currentRule, ...dbRule },
       };
 
-      const { error: versionError } = await window.supabase
+      const { error: versionError } = await supabase
         .from("context_rule_versions")
         .insert([versionData]);
 
@@ -293,7 +292,6 @@ export const contextRulesApi = {
         useKnowledgeBases: data.use_knowledge_bases || false,
         knowledgeBaseIds: data.knowledge_base_ids || [],
         preferredModel: data.preferred_model,
-        version: data.version || 1,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       };
@@ -318,7 +316,7 @@ export const contextRulesApi = {
 
   delete: async (id: string): Promise<void> => {
     try {
-      const { error } = await window.supabase
+      const { error } = await supabase
         .from("context_rules")
         .delete()
         .eq("id", id);
@@ -373,7 +371,7 @@ export const contextRulesApi = {
 
   getVersions: async (ruleId: string): Promise<any[]> => {
     try {
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("context_rule_versions")
         .select("*")
         .eq("rule_id", ruleId)
@@ -399,7 +397,7 @@ export const contextRulesApi = {
   ): Promise<ContextRule> => {
     try {
       // Get the version data
-      const { data: versionData, error: versionError } = await window.supabase
+      const { data: versionData, error: versionError } = await supabase
         .from("context_rule_versions")
         .select("*")
         .eq("rule_id", ruleId)
@@ -409,7 +407,7 @@ export const contextRulesApi = {
       if (versionError) throw versionError;
 
       // Get the current version
-      const { data: currentRule, error: currentError } = await window.supabase
+      const { data: currentRule, error: currentError } = await supabase
         .from("context_rules")
         .select("version")
         .eq("id", ruleId)
@@ -422,7 +420,7 @@ export const contextRulesApi = {
       restoredData.version = (currentRule.version || 1) + 1;
       restoredData.updated_at = new Date().toISOString();
 
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("context_rules")
         .update(restoredData)
         .eq("id", ruleId)
@@ -438,9 +436,7 @@ export const contextRulesApi = {
         data: restoredData,
       };
 
-      await window.supabase
-        .from("context_rule_versions")
-        .insert([newVersionData]);
+      await supabase.from("context_rule_versions").insert([newVersionData]);
 
       // Transform back to ContextRule type
       return {
@@ -456,7 +452,6 @@ export const contextRulesApi = {
         useKnowledgeBases: data.use_knowledge_bases || false,
         knowledgeBaseIds: data.knowledge_base_ids || [],
         preferredModel: data.preferred_model,
-        version: data.version || 1,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       };
@@ -477,7 +472,7 @@ export const contextRulesApi = {
 export const promptTemplatesApi = {
   getAll: async (): Promise<PromptTemplate[]> => {
     try {
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("prompt_templates")
         .select("*")
         .order("created_at", { ascending: false });
@@ -547,7 +542,7 @@ export const promptTemplatesApi = {
 
   getById: async (id: string): Promise<PromptTemplate> => {
     try {
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("prompt_templates")
         .select("*")
         .eq("id", id)
@@ -563,7 +558,6 @@ export const promptTemplatesApi = {
         template: data.template,
         category: data.category || "general",
         variables: data.variables || [],
-        version: data.version || 1,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       };
@@ -603,7 +597,7 @@ export const promptTemplatesApi = {
         updated_at: new Date().toISOString(),
       };
 
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("prompt_templates")
         .insert([dbTemplate])
         .select()
@@ -618,7 +612,7 @@ export const promptTemplatesApi = {
         data: dbTemplate,
       };
 
-      const { error: versionError } = await window.supabase
+      const { error: versionError } = await supabase
         .from("prompt_template_versions")
         .insert([versionData]);
 
@@ -634,7 +628,6 @@ export const promptTemplatesApi = {
         template: data.template,
         category: data.category || "general",
         variables: data.variables || [],
-        version: data.version || 1,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       };
@@ -663,7 +656,7 @@ export const promptTemplatesApi = {
   ): Promise<PromptTemplate> => {
     try {
       // Get the current version
-      const { data: currentTemplate, error: fetchError } = await window.supabase
+      const { data: currentTemplate, error: fetchError } = await supabase
         .from("prompt_templates")
         .select("*")
         .eq("id", id)
@@ -687,7 +680,7 @@ export const promptTemplatesApi = {
       dbTemplate.version = (currentTemplate.version || 1) + 1;
       dbTemplate.updated_at = new Date().toISOString();
 
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("prompt_templates")
         .update(dbTemplate)
         .eq("id", id)
@@ -703,7 +696,7 @@ export const promptTemplatesApi = {
         data: { ...currentTemplate, ...dbTemplate },
       };
 
-      const { error: versionError } = await window.supabase
+      const { error: versionError } = await supabase
         .from("prompt_template_versions")
         .insert([versionData]);
 
@@ -719,7 +712,6 @@ export const promptTemplatesApi = {
         template: data.template,
         category: data.category || "general",
         variables: data.variables || [],
-        version: data.version || 1,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       };
@@ -744,7 +736,7 @@ export const promptTemplatesApi = {
 
   delete: async (id: string): Promise<void> => {
     try {
-      const { error } = await window.supabase
+      const { error } = await supabase
         .from("prompt_templates")
         .delete()
         .eq("id", id);
@@ -764,7 +756,7 @@ export const promptTemplatesApi = {
 
   getVersions: async (templateId: string): Promise<any[]> => {
     try {
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("prompt_template_versions")
         .select("*")
         .eq("template_id", templateId)
@@ -790,7 +782,7 @@ export const promptTemplatesApi = {
   ): Promise<PromptTemplate> => {
     try {
       // Get the version data
-      const { data: versionData, error: versionError } = await window.supabase
+      const { data: versionData, error: versionError } = await supabase
         .from("prompt_template_versions")
         .select("*")
         .eq("template_id", templateId)
@@ -800,12 +792,11 @@ export const promptTemplatesApi = {
       if (versionError) throw versionError;
 
       // Get the current version
-      const { data: currentTemplate, error: currentError } =
-        await window.supabase
-          .from("prompt_templates")
-          .select("version")
-          .eq("id", templateId)
-          .single();
+      const { data: currentTemplate, error: currentError } = await supabase
+        .from("prompt_templates")
+        .select("version")
+        .eq("id", templateId)
+        .single();
 
       if (currentError) throw currentError;
 
@@ -814,7 +805,7 @@ export const promptTemplatesApi = {
       restoredData.version = (currentTemplate.version || 1) + 1;
       restoredData.updated_at = new Date().toISOString();
 
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("prompt_templates")
         .update(restoredData)
         .eq("id", templateId)
@@ -830,9 +821,7 @@ export const promptTemplatesApi = {
         data: restoredData,
       };
 
-      await window.supabase
-        .from("prompt_template_versions")
-        .insert([newVersionData]);
+      await supabase.from("prompt_template_versions").insert([newVersionData]);
 
       // Transform back to PromptTemplate type
       return {
@@ -842,7 +831,6 @@ export const promptTemplatesApi = {
         template: data.template,
         category: data.category || "general",
         variables: data.variables || [],
-        version: data.version || 1,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       };
@@ -989,7 +977,7 @@ export const analyticsApi = {
         startDate.setMonth(today.getMonth() - 1);
       }
 
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("analytics_data")
         .select("*")
         .gte("date", startDate.toISOString().split("T")[0])
@@ -1036,7 +1024,7 @@ export const analyticsApi = {
       const startDate = new Date(today);
       startDate.setDate(today.getDate() - days + 1);
 
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("analytics_messages_by_day")
         .select("date, count")
         .gte("date", startDate.toISOString().split("T")[0])
@@ -1105,14 +1093,13 @@ export const analyticsApi = {
     limit: number = 10,
   ): Promise<{ query: string; count: number }[]> => {
     try {
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("analytics_top_queries")
         .select("query, count")
         .order("count", { ascending: false })
         .limit(limit);
 
       if (error) throw error;
-
       return data || [];
     } catch (error) {
       import("@/utils/logger").then((module) => {
@@ -1155,7 +1142,7 @@ export const analyticsApi = {
         startDate.setMonth(today.getMonth() - 1);
       }
 
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("analytics_model_usage")
         .select("model, count, percentage")
         .gte("date", startDate.toISOString().split("T")[0])
@@ -1163,7 +1150,6 @@ export const analyticsApi = {
         .order("count", { ascending: false });
 
       if (error) throw error;
-
       return data || [];
     } catch (error) {
       import("@/utils/logger").then((module) => {
@@ -1292,9 +1278,7 @@ export const analyticsApi = {
 export const widgetConfigApi = {
   getAll: async (): Promise<any[]> => {
     try {
-      const { data, error } = await window.supabase
-        .from("widget_configs")
-        .select("*");
+      const { data, error } = await supabase.from("widget_configs").select("*");
 
       if (error) throw error;
       return data || [];
@@ -1313,7 +1297,7 @@ export const widgetConfigApi = {
 
   getByUserId: async (userId: string): Promise<any | null> => {
     try {
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("widget_configs")
         .select("*")
         .eq("user_id", userId)
@@ -1337,7 +1321,7 @@ export const widgetConfigApi = {
 
   getById: async (id: string): Promise<any | null> => {
     try {
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("widget_configs")
         .select("*")
         .eq("id", id)
@@ -1359,7 +1343,7 @@ export const widgetConfigApi = {
 
   create: async (config: any): Promise<any | null> => {
     try {
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("widget_configs")
         .insert([config])
         .select()
@@ -1381,7 +1365,7 @@ export const widgetConfigApi = {
 
   update: async (id: string, config: any): Promise<any | null> => {
     try {
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("widget_configs")
         .update(config)
         .eq("id", id)
@@ -1404,7 +1388,7 @@ export const widgetConfigApi = {
 
   delete: async (id: string): Promise<boolean> => {
     try {
-      const { error } = await window.supabase
+      const { error } = await supabase
         .from("widget_configs")
         .delete()
         .eq("id", id);
@@ -1431,7 +1415,7 @@ export const systemSettingsApi = {
     environment: string = "production",
   ): Promise<any> => {
     try {
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("system_settings")
         .select("settings")
         .eq("category", category)
@@ -1522,7 +1506,7 @@ export const systemSettingsApi = {
   ): Promise<void> => {
     try {
       // Check if settings for this category and environment already exist
-      const { data: existingData, error: fetchError } = await window.supabase
+      const { data: existingData, error: fetchError } = await supabase
         .from("system_settings")
         .select("id, settings")
         .eq("category", category)
@@ -1532,7 +1516,7 @@ export const systemSettingsApi = {
 
       if (existingData && existingData.length > 0) {
         // Update existing settings
-        const { error } = await window.supabase
+        const { error } = await supabase
           .from("system_settings")
           .update({
             settings,
@@ -1543,7 +1527,7 @@ export const systemSettingsApi = {
         if (error) throw error;
 
         // Add to history
-        await window.supabase.from("system_settings_history").insert([
+        await supabase.from("system_settings_history").insert([
           {
             settings_id: existingData[0].id,
             settings: existingData[0].settings,
@@ -1551,7 +1535,7 @@ export const systemSettingsApi = {
         ]);
       } else {
         // Create new settings
-        const { data, error } = await window.supabase
+        const { data, error } = await supabase
           .from("system_settings")
           .insert([
             {
@@ -1583,7 +1567,7 @@ export const systemSettingsApi = {
   ): Promise<any[]> => {
     try {
       // First get the settings ID
-      const { data: settingsData, error: settingsError } = await window.supabase
+      const { data: settingsData, error: settingsError } = await supabase
         .from("system_settings")
         .select("id")
         .eq("category", category)
@@ -1593,7 +1577,7 @@ export const systemSettingsApi = {
       if (settingsError) throw settingsError;
 
       // Then get the history for that settings ID
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("system_settings_history")
         .select("*")
         .eq("settings_id", settingsData.id)
@@ -1615,7 +1599,7 @@ export const systemSettingsApi = {
 
   getEnvironments: async (): Promise<string[]> => {
     try {
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("system_settings")
         .select("environment")
         .order("environment", { ascending: true });
@@ -1642,7 +1626,7 @@ export const systemSettingsApi = {
   createEnvironment: async (environment: string): Promise<void> => {
     try {
       // Get all categories from existing settings
-      const { data, error } = await window.supabase
+      const { data, error } = await supabase
         .from("system_settings")
         .select("category, settings")
         .eq("environment", "production"); // Use production as template
@@ -1658,7 +1642,7 @@ export const systemSettingsApi = {
         })) || [];
 
       if (newSettings.length > 0) {
-        const { error: insertError } = await window.supabase
+        const { error: insertError } = await supabase
           .from("system_settings")
           .insert(newSettings);
 
@@ -1684,6 +1668,6 @@ export default {
   chat: chatApi,
   analytics: analyticsApi,
   widgetConfig: widgetConfigApi,
-  users: userManagementApi,
+  users: userService,
   systemSettings: systemSettingsApi,
 };
