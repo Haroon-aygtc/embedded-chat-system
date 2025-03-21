@@ -1,4 +1,4 @@
-
+  import React from "react";
             import Dashboard from "./../../../../../../pages/admin/dashboard.tsx";
 
             const TempoComponent = () => {
