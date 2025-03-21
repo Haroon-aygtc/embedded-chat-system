@@ -46,6 +46,7 @@ export const contextRulesApi = {
           isActive: false,
           contextType: "general",
           keywords: ["help", "information", "question", "what", "how", "when"],
+          excludedTopics: [],
           promptTemplate:
             "You are a helpful assistant. Please answer the following question: {{ userQuery }}",
           responseFilters: [],
