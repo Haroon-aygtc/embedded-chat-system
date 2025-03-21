@@ -56,6 +56,12 @@ const EmbeddingTutorial = lazy(
 const WebSocketClientDemo = lazy(
   () => import("../components/tutorial/WebSocketClientDemo"),
 );
+const VideoTutorials = lazy(
+  () => import("../components/tutorial/VideoTutorials"),
+);
+const AnimationDemo = lazy(
+  () => import("../components/tutorial/AnimationDemo"),
+);
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -67,7 +73,7 @@ const LoadingFallback = () => (
 const AppRoutes = () => {
   // Use Tempo routes if VITE_TEMPO is true
   const tempoRoutes = import.meta.env.VITE_TEMPO ? useRoutes(routes) : null;
-  
+
   return (
     <>
       {/* Tempo routes */}
@@ -201,21 +207,21 @@ const AppRoutes = () => {
         />
         <Route path="/tutorial/embedding" element={<EmbeddingTutorial />} />
         <Route path="/tutorial/websocket" element={<WebSocketClientDemo />} />
-        <Route 
-          path="/tutorial/videos" 
+        <Route
+          path="/tutorial/videos"
           element={
             <Suspense fallback={<LoadingFallback />}>
-              <lazy(() => import("../components/tutorial/VideoTutorials"))() />
+              <VideoTutorials />
             </Suspense>
-          } 
+          }
         />
-        <Route 
-          path="/tutorial/animations" 
+        <Route
+          path="/tutorial/animations"
           element={
             <Suspense fallback={<LoadingFallback />}>
-              <lazy(() => import("../components/tutorial/AnimationDemo"))() />
+              <AnimationDemo />
             </Suspense>
-          } 
+          }
         />
 
         {/* Catch-all route */}
