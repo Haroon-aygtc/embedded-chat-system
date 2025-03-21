@@ -12,14 +12,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Send,
-  Wifi,
-  WifiOff,
-  RefreshCw,
-  Info,
-  AlertCircle,
-} from "lucide-react";
+import { Wifi, WifiOff, RefreshCw, Info, AlertCircle } from "lucide-react";
+import Send from "@/components/chat/Send";
 
 interface Message {
   id: string;

@@ -20,6 +20,7 @@ import {
   Settings,
 } from "lucide-react";
 import ChatWidget from "@/components/chat/ChatWidget";
+import Send from "@/components/chat/Send";
 
 const ChatWidgetTutorial = () => {
   const [widgetOpen, setWidgetOpen] = useState(false);

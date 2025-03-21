@@ -38,6 +38,24 @@ const SystemSettings = lazy(() => import("../components/admin/SystemSettings"));
 // Lazy-loaded user components
 const ProfilePage = lazy(() => import("../pages/user/profile"));
 
+// Lazy-loaded tutorial components
+const TutorialIntroduction = lazy(
+  () => import("../components/tutorial/TutorialIntroduction"),
+);
+const SetupGuide = lazy(() => import("../components/tutorial/SetupGuide"));
+const ChatWidgetTutorial = lazy(
+  () => import("../components/tutorial/ChatWidgetTutorial"),
+);
+const AdminDashboardTutorial = lazy(
+  () => import("../components/tutorial/AdminDashboardTutorial"),
+);
+const EmbeddingTutorial = lazy(
+  () => import("../components/tutorial/EmbeddingTutorial"),
+);
+const WebSocketClientDemo = lazy(
+  () => import("../components/tutorial/WebSocketClientDemo"),
+);
+
 // Loading fallback
 const LoadingFallback = () => (
   <div className="flex items-center justify-center h-full w-full p-8">
@@ -165,6 +183,17 @@ const AppRoutes = () => {
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="*" element={<Navigate to="dashboard" replace />} />
       </Route>
+
+      {/* Tutorial routes */}
+      <Route path="/tutorial" element={<TutorialIntroduction />} />
+      <Route path="/tutorial/setup" element={<SetupGuide />} />
+      <Route path="/tutorial/chat-widget" element={<ChatWidgetTutorial />} />
+      <Route
+        path="/tutorial/admin-dashboard"
+        element={<AdminDashboardTutorial />}
+      />
+      <Route path="/tutorial/embedding" element={<EmbeddingTutorial />} />
+      <Route path="/tutorial/websocket" element={<WebSocketClientDemo />} />
 
       {/* Catch-all route */}
       <Route path="*" element={<Navigate to="/" replace />} />
