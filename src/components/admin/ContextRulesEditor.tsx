@@ -2,7 +2,17 @@ import React, { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, Trash2, Save, AlertCircle, Info, Edit, Eye, Loader2 } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Save,
+  AlertCircle,
+  Info,
+  Edit,
+  Eye,
+  Loader2,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -99,7 +109,10 @@ const ContextRulesEditor = () => {
   const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false);
   const [isTestDialogOpen, setIsTestDialogOpen] = useState(false);
   const [testQuery, setTestQuery] = useState("");
-  const [testResult, setTestResult] = useState<{ result: string; matches: string[] } | null>(null);
+  const [testResult, setTestResult] = useState<{
+    result: string;
+    matches: string[];
+  } | null>(null);
   const [isTestingRule, setIsTestingRule] = useState(false);
 
   const {
@@ -142,7 +155,9 @@ const ContextRulesEditor = () => {
   const handleCreateRule = async (data: FormContextRule) => {
     try {
       setIsSaving(true);
-      const newRule = await contextRulesApi.create(data as Omit<ContextRule, "id" | "createdAt" | "updatedAt">);
+      const newRule = await contextRulesApi.create(
+        data as Omit<ContextRule, "id" | "createdAt" | "updatedAt">,
+      );
       setRules([...rules, newRule]);
       setActiveTab("rules-list");
       reset();
@@ -160,8 +175,13 @@ const ContextRulesEditor = () => {
 
     try {
       setIsSaving(true);
-      const updatedRule = await contextRulesApi.update(selectedRule.id, data);
-      setRules(rules.map(rule => rule.id === updatedRule.id ? updatedRule : rule));
+      const updatedRule = await contextRulesApi.update(
+        selectedRule.id,
+        data as Partial<ContextRule>,
+      );
+      setRules(
+        rules.map((rule) => (rule.id === updatedRule.id ? updatedRule : rule)),
+      );
       setSelectedRule(null);
       setActiveTab("rules-list");
       reset();
@@ -180,7 +200,7 @@ const ContextRulesEditor = () => {
     try {
       setIsLoading(true);
       await contextRulesApi.delete(id);
-      setRules(rules.filter(rule => rule.id !== id));
+      setRules(rules.filter((rule) => rule.id !== id));
       setError(null);
     } catch (error) {
       console.error("Error deleting context rule:", error);
@@ -211,7 +231,10 @@ const ContextRulesEditor = () => {
 
   const handleRemoveKeyword = (keyword: string) => {
     const currentKeywords = watch("keywords") || [];
-    setValue("keywords", currentKeywords.filter(k => k !== keyword));
+    setValue(
+      "keywords",
+      currentKeywords.filter((k) => k !== keyword),
+    );
   };
 
   const handleAddExcludedTopic = () => {
@@ -224,7 +247,10 @@ const ContextRulesEditor = () => {
 
   const handleRemoveExcludedTopic = (topic: string) => {
     const currentTopics = watch("excludedTopics") || [];
-    setValue("excludedTopics", currentTopics.filter(t => t !== topic));
+    setValue(
+      "excludedTopics",
+      currentTopics.filter((t) => t !== topic),
+    );
   };
 
   const handleAddFilter = () => {
@@ -237,7 +263,10 @@ const ContextRulesEditor = () => {
 
   const handleRemoveFilter = (index: number) => {
     const currentFilters = watch("responseFilters") || [];
-    setValue("responseFilters", currentFilters.filter((_, i) => i !== index));
+    setValue(
+      "responseFilters",
+      currentFilters.filter((_, i) => i !== index),
+    );
   };
 
   const handleTestRule = async () => {
@@ -262,7 +291,10 @@ const ContextRulesEditor = () => {
   };
 
   const formattedPromptTemplate = (template: string) => {
-    return template.replace("{{ userQuery }}", `<span class="text-blue-500 font-semibold">${sampleUserQuery}</span>`);
+    return template.replace(
+      "{{ userQuery }}",
+      `<span class="text-blue-500 font-semibold">${sampleUserQuery}</span>`,
+    );
   };
 
   return (
@@ -415,35 +447,34 @@ const ContextRulesEditor = () => {
                         </div>
                       </div>
 
-                      {rule.excludedTopics && rule.excludedTopics.length > 0 && (
-                        <div>
-                          <h4 className="text-sm font-semibold mb-1">
-                            Excluded Topics
-                          </h4>
-                          <div className="flex flex-wrap gap-1">
-                            {rule.excludedTopics.map((topic) => (
-                              <Badge
-                                key={topic}
-                                variant="outline"
-                                className="bg-destructive/10 text-destructive"
-                              >
-                                {topic}
-                              </Badge>
-                            ))}
+                      {rule.excludedTopics &&
+                        rule.excludedTopics.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-semibold mb-1">
+                              Excluded Topics
+                            </h4>
+                            <div className="flex flex-wrap gap-1">
+                              {rule.excludedTopics.map((topic) => (
+                                <Badge
+                                  key={topic}
+                                  variant="outline"
+                                  className="bg-destructive/10 text-destructive"
+                                >
+                                  {topic}
+                                </Badge>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
                     </div>
                   </CardContent>
                   <CardFooter className="border-t pt-3 text-xs text-muted-foreground">
                     <div className="w-full flex justify-between">
                       <span>
-                        Created:{" "}
-                        {new Date(rule.createdAt).toLocaleDateString()}
+                        Created: {new Date(rule.createdAt).toLocaleDateString()}
                       </span>
                       <span>
-                        Updated:{" "}
-                        {new Date(rule.updatedAt).toLocaleDateString()}
+                        Updated: {new Date(rule.updatedAt).toLocaleDateString()}
                       </span>
                     </div>
                   </CardFooter>
@@ -467,7 +498,7 @@ const ContextRulesEditor = () => {
             </CardHeader>
             <form
               onSubmit={handleSubmit(
-                selectedRule ? handleUpdateRule : handleCreateRule
+                selectedRule ? handleUpdateRule : handleCreateRule,
               )}
             >
               <CardContent className="space-y-6">
@@ -506,7 +537,10 @@ const ContextRulesEditor = () => {
                       <Select
                         defaultValue={watch("contextType")}
                         onValueChange={(value) =>
-                          setValue("contextType", value as "business" | "general")
+                          setValue(
+                            "contextType",
+                            value as "business" | "general",
+                          )
                         }
                       >
                         <SelectTrigger>
@@ -571,3 +605,171 @@ const ContextRulesEditor = () => {
                       ) : null}
                       <div className="flex flex-wrap gap-1 min-h-[40px] p-2 border rounded-md">
                         {watch("keywords")?.map((keyword) => (
+                          <Badge key={keyword} variant="secondary">
+                            {keyword}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveKeyword(keyword)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label>Excluded Topics</Label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setIsAddingExcludedTopic(true)}
+                        >
+                          <Plus className="h-4 w-4 mr-1" /> Add
+                        </Button>
+                      </div>
+                      {isAddingExcludedTopic ? (
+                        <div className="flex space-x-2">
+                          <Input
+                            value={newExcludedTopic}
+                            onChange={(e) =>
+                              setNewExcludedTopic(e.target.value)
+                            }
+                            placeholder="Enter topic"
+                            className="flex-1"
+                          />
+                          <Button
+                            type="button"
+                            onClick={handleAddExcludedTopic}
+                            size="sm"
+                          >
+                            Add
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsAddingExcludedTopic(false)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : null}
+                      <div className="flex flex-wrap gap-1 min-h-[40px] p-2 border rounded-md">
+                        {watch("excludedTopics")?.map((topic) => (
+                          <Badge key={topic} variant="outline">
+                            {topic}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveExcludedTopic(topic)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label>Response Filters</Label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setIsAddingFilter(true)}
+                        >
+                          <Plus className="h-4 w-4 mr-1" /> Add
+                        </Button>
+                      </div>
+                      {isAddingFilter ? (
+                        <div className="flex space-x-2">
+                          <Select
+                            value={newFilter.type}
+                            onValueChange={(value) =>
+                              setNewFilter({
+                                ...newFilter,
+                                type: value as "keyword" | "regex" | "semantic",
+                              })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select filter type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="keyword">Keyword</SelectItem>
+                              <SelectItem value="regex">Regex</SelectItem>
+                              <SelectItem value="semantic">Semantic</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            value={newFilter.value}
+                            onChange={(e) =>
+                              setNewFilter({
+                                ...newFilter,
+                                value: e.target.value,
+                              })
+                            }
+                            placeholder="Enter filter value"
+                            className="flex-1"
+                          />
+                          <Button
+                            type="button"
+                            onClick={handleAddFilter}
+                            size="sm"
+                          >
+                            Add
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsAddingFilter(false)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : null}
+                      <div className="flex flex-wrap gap-1 min-h-[40px] p-2 border rounded-md">
+                        {watch("responseFilters")?.map((filter, index) => (
+                          <Badge key={index} variant="outline">
+                            {filter.type === "keyword"
+                              ? filter.value
+                              : filter.type === "regex"
+                                ? filter.value
+                                : filter.value}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveFilter(index)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <CardFooter>
+                  <Button type="submit" disabled={isSaving}>
+                    {isSaving ? "Saving..." : "Save"}
+                  </Button>
+                </CardFooter>
+              </CardContent>
+            </form>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+};
+
+export default ContextRulesEditor;
