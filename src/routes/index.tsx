@@ -6,6 +6,8 @@ import LoginPage from "../pages/auth/login";
 import SignupPage from "../pages/auth/signup";
 import ForgotPasswordPage from "../pages/auth/forgot-password";
 import ResetPasswordPage from "../pages/auth/reset-password";
+import ChatPage from "../pages/chat";
+import ChatEmbedPage from "../pages/chat-embed";
 import ProtectedRoute from "../components/auth/ProtectedRoute";
 import AdminRoute from "../components/auth/AdminRoute";
 
@@ -20,6 +22,10 @@ const AppRoutes = () => {
         path="/reset-password/:resetToken"
         element={<ResetPasswordPage />}
       />
+
+      {/* Chat routes */}
+      <Route path="/chat" element={<ChatPage />} />
+      <Route path="/chat-embed" element={<ChatEmbedPage />} />
 
       {/* Admin routes */}
       <Route

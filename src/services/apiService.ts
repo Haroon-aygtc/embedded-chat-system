@@ -391,6 +391,45 @@ export const chatApi = {
       ];
     }
   },
+
+  // Delete chat history
+  deleteChatHistory: async (): Promise<{ success: boolean }> => {
+    try {
+      const response = await api.delete("/chat/history");
+      return { success: true };
+    } catch (error) {
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          "Error deleting chat history",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+      return { success: false };
+    }
+  },
+
+  // Get chat history for a specific context
+  getContextHistory: async (
+    contextRuleId: string,
+  ): Promise<
+    { id: string; text: string; timestamp: string; sender: "user" | "ai" }[]
+  > => {
+    try {
+      const response = await api.get(`/chat/history/${contextRuleId}`);
+      return response.data;
+    } catch (error) {
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error fetching chat history for context ${contextRuleId}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+      // Return empty array for demo purposes
+      return [];
+    }
+  },
 };
 
 // Analytics API
@@ -482,6 +521,29 @@ export const analyticsApi = {
         { query: "Mobile support", count: 52 },
         { query: "Data privacy", count: 47 },
         { query: "Offline mode", count: 41 },
+      ];
+    }
+  },
+
+  // Get model usage statistics
+  getModelUsage: async (
+    period: "day" | "week" | "month" = "week",
+  ): Promise<{ model: string; count: number; percentage: number }[]> => {
+    try {
+      const response = await api.get(`/analytics/model-usage?period=${period}`);
+      return response.data;
+    } catch (error) {
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error fetching model usage for period ${period}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+      // Fallback to local data
+      return [
+        { model: "Gemini", count: 6248, percentage: 70 },
+        { model: "Hugging Face", count: 2728, percentage: 30 },
       ];
     }
   },

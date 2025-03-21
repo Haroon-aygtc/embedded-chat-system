@@ -52,7 +52,10 @@ class WebSocketService {
       this.socket = new WebSocket(this.url);
 
       this.socket.onopen = () => {
-        console.log("WebSocket connection established");
+        import("@/utils/logger").then((module) => {
+          const logger = module.default;
+          logger.info("WebSocket connection established");
+        });
         this.reconnectAttempts = 0;
         this.setConnectionState(ConnectionState.CONNECTED);
         this.connectionCallbacks.forEach((callback) => callback());
@@ -76,14 +79,26 @@ class WebSocketService {
 
           this.messageCallbacks.forEach((callback) => callback(data));
         } catch (error) {
-          console.error("Error parsing WebSocket message:", error);
+          import("@/utils/logger").then((module) => {
+            const logger = module.default;
+            logger.error(
+              "Error parsing WebSocket message",
+              error instanceof Error ? error : new Error(String(error)),
+            );
+          });
         }
       };
 
       this.socket.onclose = (event) => {
-        console.log(
-          `WebSocket connection closed: ${event.code} ${event.reason}`,
-        );
+        import("@/utils/logger").then((module) => {
+          const logger = module.default;
+          logger.info(
+            `WebSocket connection closed: ${event.code} ${event.reason}`,
+            {
+              tags: { code: String(event.code) },
+            },
+          );
+        });
         this.socket = null;
         this.setConnectionState(ConnectionState.DISCONNECTED);
         this.stopHeartbeat();
@@ -103,18 +118,36 @@ class WebSocketService {
       };
 
       this.socket.onerror = (error) => {
-        console.error("WebSocket error:", error);
+        import("@/utils/logger").then((module) => {
+          const logger = module.default;
+          logger.error(
+            "WebSocket error",
+            new Error("WebSocket connection error"),
+            { extra: error },
+          );
+        });
         this.errorCallbacks.forEach((callback) => callback(error));
       };
     } catch (error) {
-      console.error("Failed to establish WebSocket connection:", error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          "Failed to establish WebSocket connection",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       this.setConnectionState(ConnectionState.FAILED);
     }
   }
 
   private setConnectionState(state: ConnectionState) {
     this.connectionState = state;
-    console.log(`WebSocket connection state changed to: ${state}`);
+    import("@/utils/logger").then((module) => {
+      const logger = module.default;
+      logger.info(`WebSocket connection state changed to: ${state}`, {
+        tags: { state },
+      });
+    });
   }
 
   private startHeartbeat() {
@@ -127,7 +160,10 @@ class WebSocketService {
 
         // Set timeout for pong response
         this.pongTimeout = setTimeout(() => {
-          console.warn("Pong response not received, connection may be dead");
+          import("@/utils/logger").then((module) => {
+            const logger = module.default;
+            logger.warn("Pong response not received, connection may be dead");
+          });
           this.disconnect();
           this.connect(); // Attempt to reconnect
         }, this.heartbeatTimeoutMs);
@@ -152,7 +188,12 @@ class WebSocketService {
 
   private handlePong() {
     const latency = Date.now() - this.lastPingTime;
-    console.debug(`WebSocket heartbeat received, latency: ${latency}ms`);
+    import("@/utils/logger").then((module) => {
+      const logger = module.default;
+      logger.debug(`WebSocket heartbeat received, latency: ${latency}ms`, {
+        tags: { latency: String(latency) },
+      });
+    });
 
     if (this.pongTimeout) {
       clearTimeout(this.pongTimeout);
@@ -165,9 +206,18 @@ class WebSocketService {
     const delay = Math.min(30000, Math.pow(2, this.reconnectAttempts) * 1000);
 
     this.setConnectionState(ConnectionState.RECONNECTING);
-    console.log(
-      `Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts})`,
-    );
+    import("@/utils/logger").then((module) => {
+      const logger = module.default;
+      logger.info(
+        `Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts})`,
+        {
+          tags: {
+            attempt: String(this.reconnectAttempts),
+            delay: String(delay),
+          },
+        },
+      );
+    });
 
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
@@ -206,9 +256,15 @@ class WebSocketService {
       this.socket.send(JSON.stringify(enhancedMessage));
       return true;
     } else {
-      console.warn(
-        "Cannot send message: WebSocket is not connected, queueing message",
-      );
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.warn(
+          "Cannot send message: WebSocket is not connected, queueing message",
+          {
+            tags: { messageType: enhancedMessage.type },
+          },
+        );
+      });
       this.queueMessage(enhancedMessage);
       return false;
     }
@@ -223,7 +279,12 @@ class WebSocketService {
     if (this.messageQueue.length < MAX_QUEUE_SIZE) {
       this.messageQueue.push(message);
     } else {
-      console.warn("Message queue full, dropping oldest message");
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.warn("Message queue full, dropping oldest message", {
+          tags: { queueSize: String(this.messageQueue.length) },
+        });
+      });
       this.messageQueue.shift(); // Remove oldest message
       this.messageQueue.push(message); // Add new message
     }
@@ -237,7 +298,12 @@ class WebSocketService {
   private processMessageQueue() {
     if (this.messageQueue.length === 0) return;
 
-    console.log(`Processing ${this.messageQueue.length} queued messages`);
+    import("@/utils/logger").then((module) => {
+      const logger = module.default;
+      logger.info(`Processing ${this.messageQueue.length} queued messages`, {
+        tags: { queueSize: String(this.messageQueue.length) },
+      });
+    });
 
     // Process all queued messages
     while (this.messageQueue.length > 0) {
@@ -345,7 +411,8 @@ class WebSocketService {
 
 // Create a singleton instance with a configurable URL from environment variables
 // Default to a secure WebSocket connection if no URL is provided
-const WS_URL = import.meta.env.VITE_WS_URL || "wss://api.chatservice.io/ws";
+const WS_URL =
+  import.meta.env.VITE_WEBSOCKET_URL || "wss://api.chatservice.io/ws";
 
 // Initialize the WebSocket service
 const websocketService = new WebSocketService(WS_URL);
@@ -354,7 +421,12 @@ const websocketService = new WebSocketService(WS_URL);
 if (import.meta.env.VITE_WS_AUTO_CONNECT !== "false") {
   // Small delay to ensure app is fully loaded before connecting
   setTimeout(() => {
-    console.log("Auto-connecting to WebSocket server:", WS_URL);
+    import("@/utils/logger").then((module) => {
+      const logger = module.default;
+      logger.info("Auto-connecting to WebSocket server", {
+        tags: { url: WS_URL },
+      });
+    });
     websocketService.connect();
   }, 1000);
 }

@@ -2,6 +2,9 @@ import React, { useState } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Copy, Check, Code2, Globe } from "lucide-react";
+import { contextRulesApi } from "@/services/apiService";
+import { useEffect } from "react";
+import { ContextRule } from "@/types/contextRules";
 
 interface EmbedCodeGeneratorProps {
   widgetId?: string;
@@ -17,33 +20,67 @@ const EmbedCodeGenerator = ({
   widgetSize = "medium",
 }: EmbedCodeGeneratorProps) => {
   const [copied, setCopied] = useState<string | null>(null);
+  const [contextRules, setContextRules] = useState<ContextRule[]>([]);
+  const [selectedContextRuleId, setSelectedContextRuleId] =
+    useState<string>("");
+  const [contextMode, setContextMode] = useState<"general" | "business">(
+    "general",
+  );
+
+  // Fetch available context rules
+  useEffect(() => {
+    const fetchContextRules = async () => {
+      try {
+        const rules = await contextRulesApi.getAll();
+        setContextRules(rules.filter((rule) => rule.isActive));
+        if (rules.length > 0) {
+          setSelectedContextRuleId(rules[0].id);
+        }
+      } catch (error) {
+        console.error("Failed to fetch context rules:", error);
+      }
+    };
+
+    fetchContextRules();
+  }, []);
+
+  const baseUrl = window.location.origin;
 
   // Generate iframe embed code
-  const iframeCode = `<iframe 
-  src="https://chat-widget.example.com/embed/${widgetId}" 
+  const generateIframeCode = () => {
+    let url = `${baseUrl}/chat-embed`;
+    const params = new URLSearchParams();
+
+    params.append("widgetId", widgetId);
+    params.append("position", widgetPosition);
+    params.append("color", widgetColor);
+    params.append("size", widgetSize);
+    params.append("contextMode", contextMode);
+
+    if (contextMode === "business" && selectedContextRuleId) {
+      params.append("contextRuleId", selectedContextRuleId);
+    }
+
+    return `<iframe 
+  src="${url}?${params.toString()}" 
   width="${widgetSize === "small" ? "300" : widgetSize === "medium" ? "380" : "450"}" 
   height="600" 
   style="border: none; position: fixed; ${widgetPosition.includes("bottom") ? "bottom: 20px;" : "top: 20px;"} ${widgetPosition.includes("right") ? "right: 20px;" : "left: 20px;"} z-index: 9999; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); border-radius: 12px; background-color: white;"
   title="Chat Widget"
 ></iframe>`;
+  };
 
   // Generate Web Component (Shadow DOM) embed code
-  const webComponentCode = `<script>
-  (function() {
-    const script = document.createElement('script');
-    script.src = 'https://chat-widget.example.com/loader.js';
-    script.async = true;
-    script.onload = function() {
-      window.ChatWidget.init({
-        widgetId: '${widgetId}',
-        color: '${widgetColor}',
-        position: '${widgetPosition}',
-        size: '${widgetSize}'
-      });
-    };
-    document.head.appendChild(script);
-  })();
-</script>`;
+  const generateWebComponentCode = () => {
+    let attributes = `widget-id="${widgetId}" position="${widgetPosition}" color="${widgetColor}" size="${widgetSize}" context-mode="${contextMode}"`;
+
+    if (contextMode === "business" && selectedContextRuleId) {
+      attributes += ` context-rule-id="${selectedContextRuleId}"`;
+    }
+
+    return `<script src="${baseUrl}/chat-widget.js"></script>
+<chat-widget ${attributes}></chat-widget>`;
+  };
 
   // Handle copy button click
   const handleCopy = (type: string, code: string) => {
@@ -62,6 +99,51 @@ const EmbedCodeGenerator = ({
           Generate code to embed the chat widget on your website using either an
           iframe or a Web Component.
         </p>
+      </div>
+
+      <div className="mb-6">
+        <h3 className="text-lg font-medium mb-2">Widget Settings</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Context Mode
+            </label>
+            <select
+              className="w-full p-2 border rounded-md"
+              value={contextMode}
+              onChange={(e) =>
+                setContextMode(e.target.value as "general" | "business")
+              }
+            >
+              <option value="general">General</option>
+              <option value="business">Business</option>
+            </select>
+          </div>
+
+          {contextMode === "business" && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Context Rule
+              </label>
+              <select
+                className="w-full p-2 border rounded-md"
+                value={selectedContextRuleId}
+                onChange={(e) => setSelectedContextRuleId(e.target.value)}
+                disabled={contextRules.length === 0}
+              >
+                {contextRules.length === 0 ? (
+                  <option value="">No rules available</option>
+                ) : (
+                  contextRules.map((rule) => (
+                    <option key={rule.id} value={rule.id}>
+                      {rule.name}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+          )}
+        </div>
       </div>
 
       <Tabs defaultValue="iframe" className="w-full">
@@ -88,7 +170,7 @@ const EmbedCodeGenerator = ({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => handleCopy("iframe", iframeCode)}
+                onClick={() => handleCopy("iframe", generateIframeCode())}
                 className="h-8"
               >
                 {copied === "iframe" ? (
@@ -104,7 +186,7 @@ const EmbedCodeGenerator = ({
             </div>
             <div className="relative">
               <pre className="p-4 bg-gray-900 text-gray-100 rounded-md overflow-x-auto text-sm">
-                <code>{iframeCode}</code>
+                <code>{generateIframeCode()}</code>
               </pre>
             </div>
           </div>
@@ -130,7 +212,9 @@ const EmbedCodeGenerator = ({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => handleCopy("web-component", webComponentCode)}
+                onClick={() =>
+                  handleCopy("web-component", generateWebComponentCode())
+                }
                 className="h-8"
               >
                 {copied === "web-component" ? (
@@ -146,7 +230,7 @@ const EmbedCodeGenerator = ({
             </div>
             <div className="relative">
               <pre className="p-4 bg-gray-900 text-gray-100 rounded-md overflow-x-auto text-sm">
-                <code>{webComponentCode}</code>
+                <code>{generateWebComponentCode()}</code>
               </pre>
             </div>
           </div>
