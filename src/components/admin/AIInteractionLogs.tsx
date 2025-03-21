@@ -332,14 +332,16 @@ const AIInteractionLogs = () => {
             <div>
               <Label htmlFor="model-filter">Filter by Model</Label>
               <Select
-                value={modelFilter || ""}
-                onValueChange={(value) => setModelFilter(value || null)}
+                value={modelFilter || "all"}
+                onValueChange={(value) =>
+                  setModelFilter(value === "all" ? null : value)
+                }
               >
                 <SelectTrigger id="model-filter">
                   <SelectValue placeholder="All Models" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Models</SelectItem>
+                  <SelectItem value="all">All Models</SelectItem>
                   {availableModels.map((model) => (
                     <SelectItem key={model} value={model}>
                       {model}
@@ -351,14 +353,16 @@ const AIInteractionLogs = () => {
             <div>
               <Label htmlFor="context-filter">Filter by Context</Label>
               <Select
-                value={contextFilter || ""}
-                onValueChange={(value) => setContextFilter(value || null)}
+                value={contextFilter || "all"}
+                onValueChange={(value) =>
+                  setContextFilter(value === "all" ? null : value)
+                }
               >
                 <SelectTrigger id="context-filter">
                   <SelectValue placeholder="All Contexts" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Contexts</SelectItem>
+                  <SelectItem value="all">All Contexts</SelectItem>
                   <SelectItem value="null">No Context</SelectItem>
                   {contextRules.map((rule) => (
                     <SelectItem key={rule.id} value={rule.id}>

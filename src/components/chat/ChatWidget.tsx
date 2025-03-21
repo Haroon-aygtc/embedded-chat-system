@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,8 @@ interface ChatWidgetProps {
   isFullPage?: boolean;
   embedded?: boolean;
   avatarSrc?: string;
+  widgetId?: string;
+  theme?: "light" | "dark";
 }
 
 const ChatWidget = ({
@@ -61,6 +63,8 @@ const ChatWidget = ({
   isFullPage = false,
   embedded = false,
   avatarSrc,
+  widgetId = "default",
+  theme = "light",
 }: ChatWidgetProps) => {
   const [isOpen, setIsOpen] = useState(initiallyOpen || isFullPage);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -75,7 +79,37 @@ const ChatWidget = ({
     ContextRule[]
   >([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [widgetSize, setWidgetSize] = useState({ width, height });
+  const [deviceType, setDeviceType] = useState(getDeviceType());
   const constraintsRef = useRef(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Detect device type for responsive adjustments
+  function getDeviceType() {
+    const ua = navigator.userAgent;
+    if (/(tablet|ipad|playbook|silk)|(android(?!.*mobi))/i.test(ua)) {
+      return "tablet";
+    }
+    if (
+      /Mobile|Android|iP(hone|od)|IEMobile|BlackBerry|Kindle|Silk-Accelerated|(hpw|web)OS|Opera M(obi|ini)/.test(
+        ua,
+      )
+    ) {
+      return "mobile";
+    }
+    return "desktop";
+  }
+
+  // Scroll to bottom of messages when new messages arrive
+  const scrollToBottom = useCallback(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
 
   // Fetch available context rules
   useEffect(() => {
@@ -110,6 +144,26 @@ const ChatWidget = ({
         };
         setMessages((prev) => [...prev, assistantMessage]);
         setIsAssistantTyping(false);
+
+        // Notify parent window if embedded
+        if (embedded) {
+          try {
+            window.parent.postMessage(
+              {
+                type: "chat-widget-event",
+                eventType: "message-received",
+                data: {
+                  message: assistantMessage,
+                  widgetId,
+                },
+                timestamp: new Date().toISOString(),
+              },
+              window.location.origin,
+            );
+          } catch (e) {
+            // Silently fail if parent communication fails
+          }
+        }
       } else if (data.type === "typing") {
         setIsAssistantTyping(data.payload.isTyping);
       } else if (data.type === "history" && Array.isArray(data.payload)) {
@@ -130,7 +184,10 @@ const ChatWidget = ({
       // Request chat history when connected
       websocketService.sendMessage({
         type: "history_request",
-        payload: {},
+        payload: {
+          widgetId,
+          contextRuleId,
+        },
         timestamp: new Date().toISOString(),
       });
     });
@@ -152,7 +209,7 @@ const ChatWidget = ({
       unsubscribe();
       connectionHandler();
     };
-  }, [contextMode, contextName]);
+  }, [contextMode, contextName, widgetId, contextRuleId, embedded]);
 
   const handleSendMessage = async (content: string) => {
     if (!content.trim()) return;
@@ -172,11 +229,32 @@ const ChatWidget = ({
 
     // Show loading state
     setIsLoading(true);
+    setIsAssistantTyping(true);
 
     try {
       // Call the provided onSendMessage function if provided
       if (onSendMessage) {
         await onSendMessage(content);
+      }
+
+      // Notify parent window if embedded
+      if (embedded) {
+        try {
+          window.parent.postMessage(
+            {
+              type: "chat-widget-event",
+              eventType: "message-sent",
+              data: {
+                message: userMessage,
+                widgetId,
+              },
+              timestamp: new Date().toISOString(),
+            },
+            window.location.origin,
+          );
+        } catch (e) {
+          // Silently fail if parent communication fails
+        }
       }
 
       // Send message via WebSocket
@@ -187,6 +265,7 @@ const ChatWidget = ({
           content,
           contextMode,
           contextRuleId,
+          widgetId,
         },
         timestamp: new Date().toISOString(),
       });
@@ -220,6 +299,27 @@ const ChatWidget = ({
           setMessages((prev) => [...prev, assistantMessage]);
           setIsLoading(false);
           setIsAssistantTyping(false);
+
+          // Notify parent window if embedded
+          if (embedded) {
+            try {
+              window.parent.postMessage(
+                {
+                  type: "chat-widget-event",
+                  eventType: "message-received",
+                  data: {
+                    message: assistantMessage,
+                    widgetId,
+                    simulated: true,
+                  },
+                  timestamp: new Date().toISOString(),
+                },
+                window.location.origin,
+              );
+            } catch (e) {
+              // Silently fail if parent communication fails
+            }
+          }
         }, 1500);
       }
     } catch (error) {
@@ -239,8 +339,52 @@ const ChatWidget = ({
           msg.id === messageId ? { ...msg, status: "error" } : msg,
         ),
       );
+
+      // Notify parent window of error if embedded
+      if (embedded) {
+        try {
+          window.parent.postMessage(
+            {
+              type: "chat-widget-event",
+              eventType: "error",
+              data: {
+                messageId,
+                error: "Failed to send message",
+                widgetId,
+              },
+              timestamp: new Date().toISOString(),
+            },
+            window.location.origin,
+          );
+        } catch (e) {
+          // Silently fail if parent communication fails
+        }
+      }
     }
   };
+
+  // Handle widget open/close
+  const handleToggleOpen = useCallback(() => {
+    const newIsOpen = !isOpen;
+    setIsOpen(newIsOpen);
+
+    // Notify parent window if embedded
+    if (embedded) {
+      try {
+        window.parent.postMessage(
+          {
+            type: "chat-widget-event",
+            eventType: newIsOpen ? "widget-opened" : "widget-closed",
+            data: { widgetId },
+            timestamp: new Date().toISOString(),
+          },
+          window.location.origin,
+        );
+      } catch (e) {
+        // Silently fail if parent communication fails
+      }
+    }
+  }, [isOpen, embedded, widgetId]);
 
   // Handle context mode change
   const handleContextModeChange = (newMode: "restricted" | "general") => {
@@ -258,6 +402,28 @@ const ChatWidget = ({
       setContextRuleId(defaultRule.id);
       setContextName(defaultRule.name);
     }
+
+    // Notify parent window if embedded
+    if (embedded) {
+      try {
+        window.parent.postMessage(
+          {
+            type: "chat-widget-event",
+            eventType: "context-changed",
+            data: {
+              contextMode: newMode,
+              contextRuleId: newMode === "general" ? null : contextRuleId,
+              contextName: newMode === "general" ? "" : contextName,
+              widgetId,
+            },
+            timestamp: new Date().toISOString(),
+          },
+          window.location.origin,
+        );
+      } catch (e) {
+        // Silently fail if parent communication fails
+      }
+    }
   };
 
   // Handle context rule change
@@ -266,6 +432,27 @@ const ChatWidget = ({
     const rule = availableContextRules.find((r) => r.id === ruleId);
     if (rule) {
       setContextName(rule.name);
+
+      // Notify parent window if embedded
+      if (embedded) {
+        try {
+          window.parent.postMessage(
+            {
+              type: "chat-widget-event",
+              eventType: "context-rule-changed",
+              data: {
+                contextRuleId: ruleId,
+                contextName: rule.name,
+                widgetId,
+              },
+              timestamp: new Date().toISOString(),
+            },
+            window.location.origin,
+          );
+        } catch (e) {
+          // Silently fail if parent communication fails
+        }
+      }
     }
   };
 
@@ -291,8 +478,9 @@ const ChatWidget = ({
         <ChatHeader
           title={title}
           isOnline={isOnline}
-          onClose={() => setIsOpen(false)}
-          onMinimize={() => setIsOpen(false)}
+          onClose={() => handleToggleOpen()}
+          onMinimize={() => handleToggleOpen()}
+          avatarSrc={avatarSrc}
         />
 
         <Popover open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
@@ -375,6 +563,7 @@ const ChatWidget = ({
           isLoading={isLoading}
           className="flex-1"
         />
+        <div ref={messagesEndRef} />
         <TypingIndicator isTyping={isAssistantTyping} className="ml-12" />
       </div>
 
@@ -398,28 +587,131 @@ const ChatWidget = ({
         // Handle resize events from parent
         if (event.data && event.data.type === "chat-widget-resize") {
           // Adjust layout based on new dimensions if needed
-          const { width, height, deviceType } = event.data;
+          const { width, height, deviceType: newDeviceType } = event.data;
 
-          // You could set these values in state if needed
-          // For example, to adjust UI for very small screens
-          if (width < 300 || height < 400) {
-            // Apply compact mode adjustments
+          if (width && height) {
+            setWidgetSize({ width, height });
+          }
+
+          if (newDeviceType) {
+            setDeviceType(newDeviceType);
+          }
+        }
+
+        // Handle configuration updates from parent
+        if (event.data && event.data.type === "chat-widget-config") {
+          const config = event.data.config || {};
+
+          // Update any configurable properties
+          if (config.allowAttachments !== undefined) {
+            // This won't actually update the prop, but could be used in state if needed
+            // For a real implementation, you'd need to use state for these features
+          }
+
+          if (config.contextMode) {
+            handleContextModeChange(config.contextMode);
+          }
+
+          if (config.contextRuleId) {
+            handleContextRuleChange(config.contextRuleId);
+          }
+
+          if (config.open !== undefined) {
+            setIsOpen(config.open);
+          }
+        }
+
+        // Handle command to clear chat history
+        if (event.data && event.data.type === "chat-widget-clear") {
+          setMessages([
+            {
+              id: "1",
+              content: `Hello! I'm your AI assistant${contextMode === "restricted" ? ` for ${contextName}` : ""}. How can I help you today?`,
+              sender: "assistant",
+              timestamp: new Date(),
+              status: "sent",
+            },
+          ]);
+
+          // Notify parent that history was cleared
+          try {
+            window.parent.postMessage(
+              {
+                type: "chat-widget-event",
+                eventType: "history-cleared",
+                data: { widgetId },
+                timestamp: new Date().toISOString(),
+              },
+              window.location.origin,
+            );
+          } catch (e) {
+            // Silently fail if parent communication fails
           }
         }
       };
 
       window.addEventListener("message", handleMessage);
 
+      // Notify parent that the widget is ready
+      try {
+        window.parent.postMessage(
+          {
+            type: "chat-widget-event",
+            eventType: "widget-ready",
+            data: {
+              widgetId,
+              features: {
+                attachments: allowAttachments,
+                voice: allowVoice,
+                emoji: allowEmoji,
+              },
+              contextMode,
+              contextRuleId,
+              contextName,
+            },
+            timestamp: new Date().toISOString(),
+          },
+          window.location.origin,
+        );
+      } catch (e) {
+        // Silently fail if parent communication fails
+      }
+
       return () => {
         window.removeEventListener("message", handleMessage);
       };
     }
-  }, [embedded]);
+  }, [
+    embedded,
+    contextMode,
+    contextName,
+    contextRuleId,
+    widgetId,
+    allowAttachments,
+    allowVoice,
+    allowEmoji,
+    handleToggleOpen,
+  ]);
+
+  // Apply theme class to container if needed
+  useEffect(() => {
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+
+    return () => {
+      // Don't remove dark mode on unmount as it might be needed by the parent app
+    };
+  }, [theme]);
 
   // If this is a full page experience
   if (isFullPage) {
     return (
-      <div className="w-full h-screen bg-background">
+      <div
+        className={`w-full h-screen bg-background ${theme === "dark" ? "dark" : ""}`}
+      >
         <div className="container mx-auto h-full flex flex-col p-4">
           {renderChatContent()}
         </div>
@@ -433,10 +725,10 @@ const ChatWidget = ({
       <AnimatePresence>
         {isOpen ? (
           <DraggableResizableWidget
-            initialWidth={width}
-            initialHeight={height}
-            onClose={() => setIsOpen(false)}
-            className={cn("bg-background")}
+            initialWidth={widgetSize.width}
+            initialHeight={widgetSize.height}
+            onClose={() => handleToggleOpen()}
+            className={cn("bg-background", theme === "dark" ? "dark" : "")}
           >
             {renderChatContent()}
           </DraggableResizableWidget>
@@ -448,9 +740,10 @@ const ChatWidget = ({
             className={`${getPositionClasses()} fixed pointer-events-auto`}
           >
             <Button
-              onClick={() => setIsOpen(true)}
+              onClick={() => handleToggleOpen()}
               className="h-14 w-14 rounded-full shadow-lg bg-primary hover:bg-primary/90 text-white"
               style={{ backgroundColor: primaryColor }}
+              aria-label="Open chat"
             >
               <MessageCircle size={24} />
             </Button>
@@ -463,7 +756,7 @@ const ChatWidget = ({
   return (
     <div
       ref={constraintsRef}
-      className="fixed inset-0 pointer-events-none overflow-hidden"
+      className={`fixed inset-0 pointer-events-none overflow-hidden ${theme === "dark" ? "dark" : ""}`}
     >
       <AnimatePresence>
         {isOpen ? (
@@ -474,14 +767,14 @@ const ChatWidget = ({
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
             style={
               {
-                width: `${width}px`,
-                height: `${height}px`,
-                backgroundColor: "white",
+                width: `${widgetSize.width}px`,
+                height: `${widgetSize.height}px`,
+                backgroundColor: theme === "dark" ? "#1a1a1a" : "white",
                 "--tw-primary": primaryColor,
                 "--tw-primary-foreground": "#ffffff",
               } as React.CSSProperties
             }
-            className={`${getPositionClasses()} fixed shadow-xl rounded-lg flex flex-col overflow-hidden pointer-events-auto border border-gray-200`}
+            className={`${getPositionClasses()} fixed shadow-xl rounded-lg flex flex-col overflow-hidden pointer-events-auto border ${theme === "dark" ? "border-gray-700" : "border-gray-200"}`}
           >
             {renderChatContent()}
           </motion.div>
@@ -493,9 +786,10 @@ const ChatWidget = ({
             className={`${getPositionClasses()} fixed pointer-events-auto`}
           >
             <Button
-              onClick={() => setIsOpen(true)}
+              onClick={() => handleToggleOpen()}
               className="h-14 w-14 rounded-full shadow-lg bg-primary hover:bg-primary/90 text-white"
               style={{ backgroundColor: primaryColor }}
+              aria-label="Open chat"
             >
               <MessageCircle size={24} />
             </Button>
