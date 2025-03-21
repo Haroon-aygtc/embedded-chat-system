@@ -42,7 +42,12 @@ wss.on("connection", (ws) => {
   // Handle incoming messages
   ws.on("message", (message) => {
     try {
-      const data = JSON.parse(message);
+      // Convert Buffer or ArrayBuffer to string if needed
+      const messageStr =
+        message instanceof Buffer || message instanceof ArrayBuffer
+          ? message.toString()
+          : message;
+      const data = JSON.parse(messageStr);
       console.log("Received:", data);
 
       // Handle different message types

@@ -220,6 +220,7 @@ process.on("uncaughtException", (error) => {
   logger.error("Server", error.stack);
 
   // In production, keep the server running despite uncaught exceptions
+  // Log the error but don't exit in production
   if (!isProd) {
     process.exit(1);
   }
@@ -230,6 +231,7 @@ process.on("unhandledRejection", (reason, promise) => {
   logger.error("Server", `Unhandled promise rejection: ${reason}`);
 
   // In production, keep the server running despite unhandled rejections
+  // Log the error but don't exit in production
   if (!isProd) {
     process.exit(1);
   }
