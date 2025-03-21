@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useReducer, useEffect } from "react";
-import { User, AuthState } from "../types/auth";
+import { createContext, useContext, useReducer, useEffect } from "react";
+import { User, AuthState } from "@/types/auth";
 
 type AuthAction =
   | { type: "LOGIN_START" }
