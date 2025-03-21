@@ -13,6 +13,9 @@ class MockSupabaseClient {
     prompt_templates: [],
     ai_interaction_logs: [],
     users: [],
+    knowledge_base_configs: [],
+    context_rule_knowledge_bases: [],
+    knowledge_base_query_logs: [],
   };
 
   constructor() {
@@ -30,6 +33,8 @@ class MockSupabaseClient {
         prompt_template: null,
         response_filters: [],
         preferred_model: "gemini",
+        use_knowledge_bases: false,
+        knowledge_base_ids: [],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       },
@@ -45,8 +50,49 @@ class MockSupabaseClient {
         prompt_template: null,
         response_filters: [],
         preferred_model: "gemini",
+        use_knowledge_bases: true,
+        knowledge_base_ids: ["kb1"],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+      },
+    ];
+
+    // Initialize sample knowledge base configs
+    this.storage.knowledge_base_configs = [
+      {
+        id: "kb1",
+        name: "Company Documentation",
+        type: "api",
+        endpoint: "https://api.example.com/knowledge",
+        api_key: "sample-api-key",
+        parameters: { maxResults: 5 },
+        is_active: true,
+        refresh_interval: 60,
+        last_synced_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      {
+        id: "kb2",
+        name: "Product Database",
+        type: "database",
+        connection_string: "postgresql://user:password@localhost:5432/products",
+        parameters: { tables: ["products", "categories"] },
+        is_active: true,
+        refresh_interval: 120,
+        last_synced_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ];
+
+    // Initialize sample context rule knowledge base links
+    this.storage.context_rule_knowledge_bases = [
+      {
+        id: "link1",
+        context_rule_id: "2",
+        knowledge_base_id: "kb1",
+        created_at: new Date().toISOString(),
       },
     ];
   }
