@@ -1,5 +1,6 @@
 import React from "react";
 import { Bell, Search, Settings, User } from "lucide-react";
+import { useAuth } from "../../context/AuthContext";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import {
@@ -125,7 +126,14 @@ const DashboardHeader = ({
               Settings
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="cursor-pointer text-red-600">
+            <DropdownMenuItem
+              className="cursor-pointer text-red-600"
+              onClick={() => {
+                const { logout } = useAuth();
+                logout();
+                window.location.href = "/login";
+              }}
+            >
               Logout
             </DropdownMenuItem>
           </DropdownMenuContent>

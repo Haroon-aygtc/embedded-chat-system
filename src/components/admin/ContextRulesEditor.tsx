@@ -96,7 +96,7 @@ const ContextRulesEditor = () => {
       ],
       excludedTopics: ["politics", "criticism"],
       promptTemplate:
-        "You are an assistant that provides information about UAE government services. {{userQuery}}",
+        "You are an assistant that provides information about UAE government services. {{ userQuery }}",
       responseFilters: [
         { type: "keyword", value: "unofficial", action: "block" },
         { type: "regex", value: "(criticism|negative)", action: "flag" },
@@ -111,7 +111,7 @@ const ContextRulesEditor = () => {
       contextType: "general",
       keywords: ["help", "information", "question", "what", "how", "when"],
       promptTemplate:
-        "You are a helpful assistant. Please answer the following question: {{userQuery}}",
+        "You are a helpful assistant. Please answer the following question: {{ userQuery }}",
       responseFilters: [],
     },
   ]);
@@ -122,7 +122,11 @@ const ContextRulesEditor = () => {
   const [isAddingExcludedTopic, setIsAddingExcludedTopic] = useState(false);
   const [newExcludedTopic, setNewExcludedTopic] = useState("");
   const [isAddingFilter, setIsAddingFilter] = useState(false);
-  const [newFilter, setNewFilter] = useState({
+  const [newFilter, setNewFilter] = useState<{
+    type: "keyword" | "regex" | "semantic";
+    value: string;
+    action: "block" | "flag" | "modify";
+  }>({
     type: "keyword",
     value: "",
     action: "block",
@@ -229,7 +233,7 @@ const ContextRulesEditor = () => {
   const addResponseFilter = () => {
     if (newFilter.value.trim()) {
       const currentFilters = watch("responseFilters") || [];
-      setValue("responseFilters", [...currentFilters, { ...newFilter }]);
+      setValue("responseFilters", [...currentFilters, newFilter]);
       setNewFilter({ type: "keyword", value: "", action: "block" });
       setIsAddingFilter(false);
     }
@@ -575,15 +579,15 @@ const ContextRulesEditor = () => {
                   <div className="flex items-center mb-1">
                     <Info className="h-4 w-4 mr-2 text-blue-500" />
                     <span className="text-sm text-muted-foreground">
-                      Use {{ userQuery }} as a placeholder for the user's
-                      message
+                      Use {"{{"} userQuery {"}}"} as a placeholder for the
+                      user's message
                     </span>
                   </div>
                   <Textarea
                     id="promptTemplate"
                     {...register("promptTemplate")}
                     rows={4}
-                    placeholder="You are an assistant that provides information about... {{userQuery}}"
+                    placeholder="You are an assistant that provides information about... {{ userQuery }}"
                   />
                   {errors.promptTemplate && (
                     <p className="text-sm text-red-500 mt-1">
@@ -610,7 +614,7 @@ const ContextRulesEditor = () => {
                               filter.action === "block"
                                 ? "destructive"
                                 : filter.action === "flag"
-                                  ? "warning"
+                                  ? "secondary"
                                   : "default"
                             }
                           >
@@ -638,7 +642,10 @@ const ContextRulesEditor = () => {
                               onValueChange={(value) =>
                                 setNewFilter({
                                   ...newFilter,
-                                  type: value as any,
+                                  type: value as
+                                    | "keyword"
+                                    | "regex"
+                                    | "semantic",
                                 })
                               }
                             >
@@ -681,7 +688,7 @@ const ContextRulesEditor = () => {
                               onValueChange={(value) =>
                                 setNewFilter({
                                   ...newFilter,
-                                  action: value as any,
+                                  action: value as "block" | "flag" | "modify",
                                 })
                               }
                             >
@@ -848,7 +855,7 @@ const ContextRulesEditor = () => {
                                 filter.action === "block"
                                   ? "destructive"
                                   : filter.action === "flag"
-                                    ? "warning"
+                                    ? "secondary"
                                     : "default"
                               }
                             >

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { cn } from "../../lib/utils";
+import { useAuth } from "../../context/AuthContext";
 import {
   LayoutDashboard,
   Settings,
@@ -283,6 +284,11 @@ const Sidebar = ({
             "w-full justify-start text-slate-300 hover:text-white hover:bg-slate-800",
             collapsed && "justify-center px-2",
           )}
+          onClick={() => {
+            const { logout } = useAuth();
+            logout();
+            window.location.href = "/login";
+          }}
         >
           <TooltipProvider delayDuration={300}>
             <Tooltip>
