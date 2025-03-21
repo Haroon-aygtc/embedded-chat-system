@@ -423,7 +423,7 @@ End with a question asking if they'd like more details about any of the recommen
                   <AlertCircle className="h-4 w-4" />
                   <AlertTitle>Template Variables</AlertTitle>
                   <AlertDescription>
-                    Variables in templates are enclosed in double curly braces (e.g., {{'{{'}}variable_name{{'}}'}}). At runtime, these variables are replaced with actual values based on the user's input or other context.
+                    Variables in templates are enclosed in double curly braces (e.g., {{"{{"}}variable_name{{"}}"}}). At runtime, these variables are replaced with actual values based on the user's input or other context.
                   </AlertDescription>
                 </Alert>
               </div>
