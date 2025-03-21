@@ -1,5 +1,6 @@
 import React, { lazy, Suspense } from "react";
-import { Route, Routes, Navigate } from "react-router-dom";
+import { Route, Routes, Navigate, useRoutes } from "react-router-dom";
+import routes from "tempo-routes";
 import Home from "../components/home";
 import LoginPage from "../pages/auth/login";
 import SignupPage from "../pages/auth/signup";
@@ -64,140 +65,164 @@ const LoadingFallback = () => (
 );
 
 const AppRoutes = () => {
+  // Use Tempo routes if VITE_TEMPO is true
+  const tempoRoutes = import.meta.env.VITE_TEMPO ? useRoutes(routes) : null;
+  
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/signup" element={<SignupPage />} />
-      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-      <Route
-        path="/reset-password/:resetToken"
-        element={<ResetPasswordPage />}
-      />
+    <>
+      {/* Tempo routes */}
+      {tempoRoutes}
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route
+          path="/reset-password/:resetToken"
+          element={<ResetPasswordPage />}
+        />
 
-      {/* Chat routes */}
-      <Route path="/chat" element={<ChatPage />} />
-      <Route path="/chat-embed" element={<ChatEmbedPage />} />
+        {/* Chat routes */}
+        <Route path="/chat" element={<ChatPage />} />
+        <Route path="/chat-embed" element={<ChatEmbedPage />} />
 
-      {/* User routes */}
-      <Route
-        path="/user/profile"
-        element={
-          <ProtectedRoute>
-            <Suspense fallback={<LoadingFallback />}>
-              <ProfilePage />
-            </Suspense>
-          </ProtectedRoute>
-        }
-      />
+        {/* User routes */}
+        <Route
+          path="/user/profile"
+          element={
+            <ProtectedRoute>
+              <Suspense fallback={<LoadingFallback />}>
+                <ProfilePage />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
 
-      {/* Admin routes with shared layout */}
-      <Route
-        path="/admin"
-        element={
-          <AdminRoute>
-            <AdminLayout />
-          </AdminRoute>
-        }
-      >
+        {/* Admin routes with shared layout */}
         <Route
-          path="dashboard"
+          path="/admin"
           element={
-            <Suspense fallback={<LoadingFallback />}>
-              <Dashboard />
-            </Suspense>
+            <AdminRoute>
+              <AdminLayout />
+            </AdminRoute>
           }
-        />
-        <Route
-          path="users"
-          element={
-            <Suspense fallback={<LoadingFallback />}>
-              <UserManagement />
-            </Suspense>
-          }
-        />
-        <Route
-          path="widget-config"
-          element={
-            <Suspense fallback={<LoadingFallback />}>
-              <WidgetConfigurator />
-            </Suspense>
-          }
-        />
-        <Route
-          path="context-rules"
-          element={
-            <Suspense fallback={<LoadingFallback />}>
-              <ContextRulesEditor />
-            </Suspense>
-          }
-        />
-        <Route
-          path="templates"
-          element={
-            <Suspense fallback={<LoadingFallback />}>
-              <PromptTemplates />
-            </Suspense>
-          }
-        />
-        <Route
-          path="embed-code"
-          element={
-            <Suspense fallback={<LoadingFallback />}>
-              <EmbedCodeGenerator />
-            </Suspense>
-          }
-        />
-        <Route
-          path="api-keys"
-          element={
-            <Suspense fallback={<LoadingFallback />}>
-              <ApiKeysPage />
-            </Suspense>
-          }
-        />
-        <Route
-          path="moderation/queue"
-          element={
-            <Suspense fallback={<LoadingFallback />}>
-              <ModerationQueue />
-            </Suspense>
-          }
-        />
-        <Route
-          path="moderation/rules"
-          element={
-            <Suspense fallback={<LoadingFallback />}>
-              <ModerationRules />
-            </Suspense>
-          }
-        />
-        <Route
-          path="settings"
-          element={
-            <Suspense fallback={<LoadingFallback />}>
-              <SystemSettings />
-            </Suspense>
-          }
-        />
-        <Route index element={<Navigate to="dashboard" replace />} />
-        <Route path="*" element={<Navigate to="dashboard" replace />} />
-      </Route>
+        >
+          <Route
+            path="dashboard"
+            element={
+              <Suspense fallback={<LoadingFallback />}>
+                <Dashboard />
+              </Suspense>
+            }
+          />
+          <Route
+            path="users"
+            element={
+              <Suspense fallback={<LoadingFallback />}>
+                <UserManagement />
+              </Suspense>
+            }
+          />
+          <Route
+            path="widget-config"
+            element={
+              <Suspense fallback={<LoadingFallback />}>
+                <WidgetConfigurator />
+              </Suspense>
+            }
+          />
+          <Route
+            path="context-rules"
+            element={
+              <Suspense fallback={<LoadingFallback />}>
+                <ContextRulesEditor />
+              </Suspense>
+            }
+          />
+          <Route
+            path="templates"
+            element={
+              <Suspense fallback={<LoadingFallback />}>
+                <PromptTemplates />
+              </Suspense>
+            }
+          />
+          <Route
+            path="embed-code"
+            element={
+              <Suspense fallback={<LoadingFallback />}>
+                <EmbedCodeGenerator />
+              </Suspense>
+            }
+          />
+          <Route
+            path="api-keys"
+            element={
+              <Suspense fallback={<LoadingFallback />}>
+                <ApiKeysPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="moderation/queue"
+            element={
+              <Suspense fallback={<LoadingFallback />}>
+                <ModerationQueue />
+              </Suspense>
+            }
+          />
+          <Route
+            path="moderation/rules"
+            element={
+              <Suspense fallback={<LoadingFallback />}>
+                <ModerationRules />
+              </Suspense>
+            }
+          />
+          <Route
+            path="settings"
+            element={
+              <Suspense fallback={<LoadingFallback />}>
+                <SystemSettings />
+              </Suspense>
+            }
+          />
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="*" element={<Navigate to="dashboard" replace />} />
+        </Route>
 
-      {/* Tutorial routes */}
-      <Route path="/tutorial" element={<TutorialIntroduction />} />
-      <Route path="/tutorial/setup" element={<SetupGuide />} />
-      <Route path="/tutorial/chat-widget" element={<ChatWidgetTutorial />} />
-      <Route
-        path="/tutorial/admin-dashboard"
-        element={<AdminDashboardTutorial />}
-      />
-      <Route path="/tutorial/embedding" element={<EmbeddingTutorial />} />
-      <Route path="/tutorial/websocket" element={<WebSocketClientDemo />} />
+        {/* Tutorial routes */}
+        <Route path="/tutorial" element={<TutorialIntroduction />} />
+        <Route path="/tutorial/setup" element={<SetupGuide />} />
+        <Route path="/tutorial/chat-widget" element={<ChatWidgetTutorial />} />
+        <Route
+          path="/tutorial/admin-dashboard"
+          element={<AdminDashboardTutorial />}
+        />
+        <Route path="/tutorial/embedding" element={<EmbeddingTutorial />} />
+        <Route path="/tutorial/websocket" element={<WebSocketClientDemo />} />
+        <Route 
+          path="/tutorial/videos" 
+          element={
+            <Suspense fallback={<LoadingFallback />}>
+              <lazy(() => import("../components/tutorial/VideoTutorials"))() />
+            </Suspense>
+          } 
+        />
+        <Route 
+          path="/tutorial/animations" 
+          element={
+            <Suspense fallback={<LoadingFallback />}>
+              <lazy(() => import("../components/tutorial/AnimationDemo"))() />
+            </Suspense>
+          } 
+        />
 
-      {/* Catch-all route */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        {/* Catch-all route */}
+        {import.meta.env.VITE_TEMPO && <Route path="/tempobook/*" />}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   );
 };
 

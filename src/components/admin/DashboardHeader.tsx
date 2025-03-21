@@ -1,6 +1,7 @@
 import React from "react";
-import { Bell, Search, Settings, User } from "lucide-react";
+import { Bell, Search, Settings, User, LogOut } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +29,21 @@ const DashboardHeader = ({
   userAvatar = "",
   notificationCount = 3,
 }: DashboardHeaderProps) => {
+  const navigate = useNavigate();
+  const auth = useAuth();
+
+  const handleLogout = () => {
+    auth.logout();
+    navigate("/login");
+  };
+
+  const handleProfileClick = () => {
+    navigate("/user/profile");
+  };
+
+  const handleSettingsClick = () => {
+    navigate("/admin/settings");
+  };
   return (
     <header className="bg-white border-b border-gray-200 p-4 flex items-center justify-between w-full h-20 shadow-sm">
       <div className="flex items-center">
@@ -92,7 +108,7 @@ const DashboardHeader = ({
         </DropdownMenu>
 
         {/* Settings */}
-        <Button variant="ghost" size="icon">
+        <Button variant="ghost" size="icon" onClick={handleSettingsClick}>
           <Settings className="h-5 w-5 text-gray-600" />
         </Button>
 
@@ -117,23 +133,26 @@ const DashboardHeader = ({
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="cursor-pointer">
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onClick={handleProfileClick}
+            >
               <User className="mr-2 h-4 w-4" />
               Profile
             </DropdownMenuItem>
-            <DropdownMenuItem className="cursor-pointer">
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onClick={handleSettingsClick}
+            >
               <Settings className="mr-2 h-4 w-4" />
               Settings
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="cursor-pointer text-red-600"
-              onClick={() => {
-                const auth = useAuth();
-                auth.logout();
-                window.location.href = "/login";
-              }}
+              onClick={handleLogout}
             >
+              <LogOut className="mr-2 h-4 w-4" />
               Logout
             </DropdownMenuItem>
           </DropdownMenuContent>
