@@ -71,6 +71,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import supabase from "@/services/supabaseClient";
+import { Label } from "@/components/ui/label";
 
 // Define user schema
 const userFormSchema = z.object({
@@ -495,8 +496,10 @@ const UserManagement = () => {
         user.email,
         user.role,
         user.isActive ? "Active" : "Inactive",
-        user.lastLogin ? new Date(user.lastLogin).toLocaleString() : "Never",
-        new Date(user.createdAt).toLocaleString(),
+        user.lastLogin
+          ? format(new Date(user.lastLogin), "MMM d, yyyy")
+          : "Never",
+        format(new Date(user.createdAt), "MMM d, yyyy"),
       ]),
     ]
       .map((row) => row.join(","))
@@ -597,14 +600,16 @@ const UserManagement = () => {
 
           <div className="flex gap-2">
             <Select
-              value={roleFilter || ""}
-              onValueChange={(value) => setRoleFilter(value || null)}
+              value={roleFilter || "all"}
+              onValueChange={(value) =>
+                setRoleFilter(value === "all" ? null : value)
+              }
             >
               <SelectTrigger className="w-[150px]">
                 <SelectValue placeholder="All Roles" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Roles</SelectItem>
+                <SelectItem value="all">All Roles</SelectItem>
                 <SelectItem value="admin">Admin</SelectItem>
                 <SelectItem value="editor">Editor</SelectItem>
                 <SelectItem value="viewer">Viewer</SelectItem>
@@ -613,14 +618,16 @@ const UserManagement = () => {
             </Select>
 
             <Select
-              value={statusFilter || ""}
-              onValueChange={(value) => setStatusFilter(value || null)}
+              value={statusFilter || "all"}
+              onValueChange={(value) =>
+                setStatusFilter(value === "all" ? null : value)
+              }
             >
               <SelectTrigger className="w-[150px]">
                 <SelectValue placeholder="All Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Status</SelectItem>
+                <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="inactive">Inactive</SelectItem>
               </SelectContent>
@@ -705,7 +712,9 @@ const UserManagement = () => {
                         : "Never"}
                     </TableCell>
                     <TableCell>
-                      {format(new Date(user.createdAt), "MMM d, yyyy")}
+                      {user.createdAt
+                        ? format(new Date(user.createdAt), "MMM d, yyyy")
+                        : "N/A"}
                     </TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
@@ -1090,7 +1099,9 @@ const UserManagement = () => {
                       <TableRow key={activity.id}>
                         <TableCell>{activity.action}</TableCell>
                         <TableCell>
-                          {format(new Date(activity.timestamp), "PPpp")}
+                          {activity && activity.timestamp
+                            ? format(new Date(activity.timestamp), "PPpp")
+                            : "N/A"}
                         </TableCell>
                         <TableCell>{activity.ipAddress}</TableCell>
                       </TableRow>
@@ -1119,7 +1130,9 @@ const UserManagement = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {format(new Date(userActivity[0]?.timestamp), "PPpp")}
+                        {userActivity && userActivity[0]?.timestamp
+                          ? format(new Date(userActivity[0]?.timestamp), "PPpp")
+                          : "N/A"}
                       </TableCell>
                       <TableCell>{userActivity[0]?.ipAddress}</TableCell>
                       <TableCell>
@@ -1139,7 +1152,9 @@ const UserManagement = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {format(new Date(userActivity[3]?.timestamp), "PPpp")}
+                        {userActivity && userActivity[3]?.timestamp
+                          ? format(new Date(userActivity[3]?.timestamp), "PPpp")
+                          : "N/A"}
                       </TableCell>
                       <TableCell>{userActivity[3]?.ipAddress}</TableCell>
                       <TableCell>

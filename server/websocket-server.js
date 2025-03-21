@@ -16,10 +16,19 @@ const wss = new WebSocket.Server({ server });
 // Track connected clients
 const clients = new Set();
 
+// Implement heartbeat to detect and clean up broken connections
+function heartbeat() {
+  this.isAlive = true;
+}
+
 // Handle new connections
 wss.on("connection", (ws) => {
   console.log("Client connected");
   clients.add(ws);
+
+  // Set up heartbeat
+  ws.isAlive = true;
+  ws.on("pong", heartbeat);
 
   // Send welcome message
   ws.send(
@@ -116,9 +125,35 @@ wss.on("connection", (ws) => {
   });
 });
 
+// Ping all clients every 30 seconds to detect broken connections
+const interval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) return ws.terminate();
+
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 30000);
+
+// Clean up interval on server close
+wss.on("close", () => {
+  clearInterval(interval);
+});
+
+// Add graceful shutdown
+process.on("SIGTERM", () => {
+  console.log("SIGTERM signal received: closing WebSocket server");
+  wss.close(() => {
+    console.log("WebSocket server closed");
+    process.exit(0);
+  });
+});
+
 // Start server
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`WebSocket server running on port ${PORT}`);
-  console.log(`WebSocket URL: ws://localhost:${PORT}`);
+  console.log(
+    `WebSocket URL: ${process.env.NODE_ENV === "production" ? "wss://<your-domain>" : `ws://localhost:${PORT}`}`,
+  );
 });

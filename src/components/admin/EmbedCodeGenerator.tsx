@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import {
@@ -8,6 +8,7 @@ import {
   Globe,
   AlertCircle,
   RefreshCw,
+  FileCode,
 } from "lucide-react";
 import { contextRulesApi, widgetConfigApi } from "@/services/apiService";
 import { useEffect } from "react";
@@ -15,6 +16,25 @@ import { ContextRule } from "@/types/contextRules";
 import { useRealtime } from "@/hooks/useRealtime";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/components/ui/use-toast";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 interface EmbedCodeGeneratorProps {
   widgetId?: string;
@@ -45,6 +65,17 @@ const EmbedCodeGenerator = ({
   const [widgetPosition, setWidgetPosition] = useState(initialWidgetPosition);
   const [widgetSize, setWidgetSize] = useState(initialWidgetSize);
   const [configId, setConfigId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("iframe");
+  const [chatTitle, setChatTitle] = useState("Chat Assistant");
+  const [welcomeMessage, setWelcomeMessage] = useState(
+    "Hello! How can I help you today?",
+  );
+  const [zIndex, setZIndex] = useState(9999);
+  const [initialState, setInitialState] = useState<"minimized" | "expanded">(
+    "minimized",
+  );
+  const [enableKnowledgeBase, setEnableKnowledgeBase] = useState(false);
+  const [knowledgeBaseId, setKnowledgeBaseId] = useState("");
   const { toast } = useToast();
 
   // Subscribe to real-time changes in widget_configs table
@@ -79,6 +110,11 @@ const EmbedCodeGenerator = ({
             const settings = config.settings;
             if (settings.primaryColor) setWidgetColor(settings.primaryColor);
             if (settings.position) setWidgetPosition(settings.position);
+            if (settings.chatTitle) setChatTitle(settings.chatTitle);
+            if (settings.welcomeMessage)
+              setWelcomeMessage(settings.welcomeMessage);
+            if (settings.zIndex) setZIndex(settings.zIndex);
+            if (settings.initialState) setInitialState(settings.initialState);
 
             // Map widget size based on chatIconSize
             if (settings.chatIconSize) {
@@ -112,6 +148,10 @@ const EmbedCodeGenerator = ({
       // Update state with new configuration values
       if (settings.primaryColor) setWidgetColor(settings.primaryColor);
       if (settings.position) setWidgetPosition(settings.position);
+      if (settings.chatTitle) setChatTitle(settings.chatTitle);
+      if (settings.welcomeMessage) setWelcomeMessage(settings.welcomeMessage);
+      if (settings.zIndex) setZIndex(settings.zIndex);
+      if (settings.initialState) setInitialState(settings.initialState);
 
       // Map widget size based on chatIconSize
       if (settings.chatIconSize) {
@@ -139,26 +179,38 @@ const EmbedCodeGenerator = ({
     params.append("color", widgetColor);
     params.append("size", widgetSize);
     params.append("contextMode", contextMode);
+    params.append("chatTitle", encodeURIComponent(chatTitle));
+    params.append("welcomeMessage", encodeURIComponent(welcomeMessage));
+    params.append("initialState", initialState);
+    params.append("zIndex", zIndex.toString());
 
     if (contextMode === "business" && selectedContextRuleId) {
       params.append("contextRuleId", selectedContextRuleId);
+    }
+
+    if (enableKnowledgeBase && knowledgeBaseId) {
+      params.append("knowledgeBaseId", knowledgeBaseId);
     }
 
     return `<iframe 
   src="${url}?${params.toString()}" 
   width="${widgetSize === "small" ? "300" : widgetSize === "medium" ? "380" : "450"}" 
   height="600" 
-  style="border: none; position: fixed; ${widgetPosition.includes("bottom") ? "bottom: 20px;" : "top: 20px;"} ${widgetPosition.includes("right") ? "right: 20px;" : "left: 20px;"} z-index: 9999; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); border-radius: 12px; background-color: white;"
+  style="border: none; position: fixed; ${widgetPosition.includes("bottom") ? "bottom: 20px;" : "top: 20px;"} ${widgetPosition.includes("right") ? "right: 20px;" : "left: 20px;"} z-index: ${zIndex}; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); border-radius: 12px; background-color: white;"
   title="Chat Widget"
 ></iframe>`;
   };
 
   // Generate Web Component (Shadow DOM) embed code
   const generateWebComponentCode = () => {
-    let attributes = `widget-id="${widgetId}" position="${widgetPosition}" color="${widgetColor}" size="${widgetSize}" context-mode="${contextMode}"`;
+    let attributes = `widget-id="${widgetId}" position="${widgetPosition}" color="${widgetColor}" size="${widgetSize}" context-mode="${contextMode}" chat-title="${chatTitle}" welcome-message="${welcomeMessage}" initial-state="${initialState}" z-index="${zIndex}"`;
 
     if (contextMode === "business" && selectedContextRuleId) {
       attributes += ` context-rule-id="${selectedContextRuleId}"`;
+    }
+
+    if (enableKnowledgeBase && knowledgeBaseId) {
+      attributes += ` knowledge-base-id="${knowledgeBaseId}"`;
     }
 
     return `<script src="${baseUrl}/chat-widget.js"></script>
@@ -170,6 +222,11 @@ const EmbedCodeGenerator = ({
     navigator.clipboard.writeText(code);
     setCopied(type);
     setTimeout(() => setCopied(null), 2000);
+
+    toast({
+      title: "Copied to clipboard",
+      description: "The embed code has been copied to your clipboard",
+    });
   };
 
   return (
@@ -198,152 +255,314 @@ const EmbedCodeGenerator = ({
         </p>
       </div>
 
-      <div className="mb-6">
-        <h3 className="text-lg font-medium mb-2">Widget Settings</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Context Mode
-            </label>
-            <select
-              className="w-full p-2 border rounded-md"
-              value={contextMode}
-              onChange={(e) =>
-                setContextMode(e.target.value as "general" | "business")
-              }
-            >
-              <option value="general">General</option>
-              <option value="business">Business</option>
-            </select>
-          </div>
-
-          {contextMode === "business" && (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Configuration Panel */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Widget Settings</CardTitle>
+            <CardDescription>
+              Customize how your chat widget will appear and behave
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Context Rule
-              </label>
-              <select
-                className="w-full p-2 border rounded-md"
-                value={selectedContextRuleId}
-                onChange={(e) => setSelectedContextRuleId(e.target.value)}
-                disabled={contextRules.length === 0}
+              <Label htmlFor="embedMethod">Embed Method</Label>
+              <Tabs
+                value={activeTab}
+                onValueChange={setActiveTab}
+                className="mt-2"
               >
-                {contextRules.length === 0 ? (
-                  <option value="">No rules available</option>
-                ) : (
-                  contextRules.map((rule) => (
-                    <option key={rule.id} value={rule.id}>
-                      {rule.name}
-                    </option>
-                  ))
-                )}
-              </select>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger
+                    value="iframe"
+                    className="flex items-center gap-2"
+                  >
+                    <Globe className="h-4 w-4" />
+                    iFrame
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="web-component"
+                    className="flex items-center gap-2"
+                  >
+                    <Code2 className="h-4 w-4" />
+                    Web Component
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <p className="text-sm text-muted-foreground mt-2">
+                {activeTab === "iframe"
+                  ? "iFrame provides complete isolation from your website styles"
+                  : "Web Component uses Shadow DOM for style encapsulation with better integration"}
+              </p>
             </div>
-          )}
-        </div>
+
+            <div>
+              <Label htmlFor="widgetColor">Primary Color</Label>
+              <div className="flex items-center gap-2 mt-2">
+                <div
+                  className="w-6 h-6 rounded-full border"
+                  style={{ backgroundColor: widgetColor }}
+                />
+                <Input
+                  id="widgetColor"
+                  type="text"
+                  value={widgetColor}
+                  onChange={(e) => setWidgetColor(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="widgetPosition">Widget Position</Label>
+              <Select value={widgetPosition} onValueChange={setWidgetPosition}>
+                <SelectTrigger className="mt-2">
+                  <SelectValue placeholder="Select position" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="bottom-right">Bottom Right</SelectItem>
+                  <SelectItem value="bottom-left">Bottom Left</SelectItem>
+                  <SelectItem value="top-right">Top Right</SelectItem>
+                  <SelectItem value="top-left">Top Left</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="initialState">Initial State</Label>
+              <Select value={initialState} onValueChange={setInitialState}>
+                <SelectTrigger className="mt-2">
+                  <SelectValue placeholder="Select initial state" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="minimized">Minimized</SelectItem>
+                  <SelectItem value="expanded">Expanded</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="chatTitle">Chat Title</Label>
+              <Input
+                id="chatTitle"
+                className="mt-2"
+                value={chatTitle}
+                onChange={(e) => setChatTitle(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="welcomeMessage">Welcome Message</Label>
+              <Textarea
+                id="welcomeMessage"
+                className="mt-2"
+                value={welcomeMessage}
+                onChange={(e) => setWelcomeMessage(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="zIndex">Z-Index</Label>
+              <Input
+                id="zIndex"
+                type="number"
+                className="mt-2"
+                value={zIndex}
+                onChange={(e) => setZIndex(parseInt(e.target.value))}
+              />
+              <p className="text-sm text-muted-foreground mt-1">
+                Controls the stacking order of the widget (higher numbers appear
+                on top)
+              </p>
+            </div>
+
+            <div className="border rounded-md p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="contextMode">Context Mode</Label>
+                <Select
+                  value={contextMode}
+                  onValueChange={(value) =>
+                    setContextMode(value as "general" | "business")
+                  }
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Select context mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="general">General</SelectItem>
+                    <SelectItem value="business">Business</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {contextMode === "business" && (
+                <div>
+                  <Label htmlFor="contextRuleId">Context Rule</Label>
+                  <Select
+                    value={selectedContextRuleId}
+                    onValueChange={setSelectedContextRuleId}
+                  >
+                    <SelectTrigger className="mt-2">
+                      <SelectValue placeholder="Select context rule" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {contextRules.length === 0 ? (
+                        <SelectItem value="">No rules available</SelectItem>
+                      ) : (
+                        contextRules.map((rule) => (
+                          <SelectItem key={rule.id} value={rule.id}>
+                            {rule.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+
+            <div className="border rounded-md p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="enableKnowledgeBase">
+                  Enable Knowledge Base
+                </Label>
+                <Switch
+                  id="enableKnowledgeBase"
+                  checked={enableKnowledgeBase}
+                  onCheckedChange={setEnableKnowledgeBase}
+                />
+              </div>
+
+              {enableKnowledgeBase && (
+                <div>
+                  <Label htmlFor="knowledgeBaseId">Knowledge Base ID</Label>
+                  <Input
+                    id="knowledgeBaseId"
+                    className="mt-2"
+                    value={knowledgeBaseId}
+                    onChange={(e) => setKnowledgeBaseId(e.target.value)}
+                    placeholder="Enter knowledge base ID"
+                  />
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Code Preview Panel */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Embed Code</CardTitle>
+            <CardDescription>
+              Copy this code and paste it into your website
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs
+              value={activeTab}
+              onValueChange={setActiveTab}
+              className="w-full"
+            >
+              <TabsList className="mb-4 w-full flex justify-start">
+                <TabsTrigger value="iframe" className="flex items-center gap-2">
+                  <Code2 className="h-4 w-4" />
+                  iframe Embed
+                </TabsTrigger>
+                <TabsTrigger
+                  value="web-component"
+                  className="flex items-center gap-2"
+                >
+                  <Globe className="h-4 w-4" />
+                  Web Component
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="iframe" className="space-y-4">
+                <div className="p-4 bg-gray-50 rounded-md">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-sm font-medium text-gray-700">
+                      iframe Embed Code
+                    </h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleCopy("iframe", generateIframeCode())}
+                      className="h-8"
+                    >
+                      {copied === "iframe" ? (
+                        <>
+                          <Check className="h-4 w-4 mr-2" /> Copied
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-4 w-4 mr-2" /> Copy Code
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <div className="relative">
+                    <pre className="p-4 bg-gray-900 text-gray-100 rounded-md overflow-x-auto text-sm">
+                      <code>{generateIframeCode()}</code>
+                    </pre>
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="web-component" className="space-y-4">
+                <div className="p-4 bg-gray-50 rounded-md">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-sm font-medium text-gray-700">
+                      Web Component Embed Code
+                    </h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        handleCopy("web-component", generateWebComponentCode())
+                      }
+                      className="h-8"
+                    >
+                      {copied === "web-component" ? (
+                        <>
+                          <Check className="h-4 w-4 mr-2" /> Copied
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-4 w-4 mr-2" /> Copy Code
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <div className="relative">
+                    <pre className="p-4 bg-gray-900 text-gray-100 rounded-md overflow-x-auto text-sm">
+                      <code>{generateWebComponentCode()}</code>
+                    </pre>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+          <CardFooter>
+            <Alert className="w-full">
+              <FileCode className="h-4 w-4" />
+              <AlertTitle>Implementation Tips</AlertTitle>
+              <AlertDescription>
+                <ul className="list-disc list-inside text-sm space-y-1 mt-2">
+                  <li>
+                    Add this code just before the closing{" "}
+                    <code>&lt;/body&gt;</code> tag
+                  </li>
+                  <li>
+                    For iFrame, ensure your CSP allows embedding from your
+                    domain
+                  </li>
+                  <li>For Web Component, ensure JavaScript is enabled</li>
+                  <li>Test on all major browsers to ensure compatibility</li>
+                </ul>
+              </AlertDescription>
+            </Alert>
+          </CardFooter>
+        </Card>
       </div>
-
-      <Tabs defaultValue="iframe" className="w-full">
-        <TabsList className="mb-4 w-full flex justify-start">
-          <TabsTrigger value="iframe" className="flex items-center gap-2">
-            <Code2 className="h-4 w-4" />
-            iframe Embed
-          </TabsTrigger>
-          <TabsTrigger
-            value="web-component"
-            className="flex items-center gap-2"
-          >
-            <Globe className="h-4 w-4" />
-            Web Component
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="iframe" className="space-y-4">
-          <div className="p-4 bg-gray-50 rounded-md">
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="text-sm font-medium text-gray-700">
-                iframe Embed Code
-              </h3>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleCopy("iframe", generateIframeCode())}
-                className="h-8"
-              >
-                {copied === "iframe" ? (
-                  <>
-                    <Check className="h-4 w-4 mr-2" /> Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-4 w-4 mr-2" /> Copy Code
-                  </>
-                )}
-              </Button>
-            </div>
-            <div className="relative">
-              <pre className="p-4 bg-gray-900 text-gray-100 rounded-md overflow-x-auto text-sm">
-                <code>{generateIframeCode()}</code>
-              </pre>
-            </div>
-          </div>
-
-          <div className="p-4 bg-blue-50 rounded-md border border-blue-100">
-            <h4 className="text-sm font-medium text-blue-800 mb-2">
-              About iframe Embedding
-            </h4>
-            <p className="text-sm text-blue-700">
-              The iframe method provides complete isolation from your website's
-              styles and scripts. It's simple to implement but offers less
-              customization options.
-            </p>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="web-component" className="space-y-4">
-          <div className="p-4 bg-gray-50 rounded-md">
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="text-sm font-medium text-gray-700">
-                Web Component Embed Code
-              </h3>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  handleCopy("web-component", generateWebComponentCode())
-                }
-                className="h-8"
-              >
-                {copied === "web-component" ? (
-                  <>
-                    <Check className="h-4 w-4 mr-2" /> Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-4 w-4 mr-2" /> Copy Code
-                  </>
-                )}
-              </Button>
-            </div>
-            <div className="relative">
-              <pre className="p-4 bg-gray-900 text-gray-100 rounded-md overflow-x-auto text-sm">
-                <code>{generateWebComponentCode()}</code>
-              </pre>
-            </div>
-          </div>
-
-          <div className="p-4 bg-blue-50 rounded-md border border-blue-100">
-            <h4 className="text-sm font-medium text-blue-800 mb-2">
-              About Web Component Embedding
-            </h4>
-            <p className="text-sm text-blue-700">
-              The Web Component method uses Shadow DOM to encapsulate styles and
-              scripts. It offers better integration with your website and more
-              customization options.
-            </p>
-          </div>
-        </TabsContent>
-      </Tabs>
 
       <div className="mt-6 p-4 bg-amber-50 rounded-md border border-amber-100">
         <h4 className="text-sm font-medium text-amber-800 mb-2">
