@@ -34,6 +34,19 @@ const HUGGINGFACE_ENDPOINT =
   (import.meta.env.VITE_HUGGINGFACE_ENDPOINT as string) ||
   "https://api-inference.huggingface.co/models";
 
+// Check if API keys are available and log warnings if not
+if (!GEMINI_API_KEY) {
+  console.warn(
+    "Gemini API key is missing. Set VITE_GEMINI_API_KEY in your environment variables.",
+  );
+}
+
+if (!HUGGINGFACE_API_KEY) {
+  console.warn(
+    "Hugging Face API key is missing. Set VITE_HUGGINGFACE_API_KEY in your environment variables.",
+  );
+}
+
 // Default model configurations
 const modelConfigs: Record<AIModel, AIModelConfig> = {
   gemini: {

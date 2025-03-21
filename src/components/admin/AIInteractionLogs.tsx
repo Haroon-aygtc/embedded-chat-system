@@ -49,6 +49,7 @@ interface AIInteractionLog {
 const AIInteractionLogs = () => {
   const [logs, setLogs] = useState<AIInteractionLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [modelFilter, setModelFilter] = useState<string | null>(null);
   const [contextFilter, setContextFilter] = useState<string | null>(null);
@@ -62,6 +63,7 @@ const AIInteractionLogs = () => {
     { id: string; name: string }[]
   >([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [exportLoading, setExportLoading] = useState(false);
 
   const pageSize = 10;
 
@@ -72,6 +74,7 @@ const AIInteractionLogs = () => {
 
   const fetchContextRules = async () => {
     try {
+      setError(null);
       const { data, error } = await supabase
         .from("context_rules")
         .select("id, name")
@@ -81,11 +84,13 @@ const AIInteractionLogs = () => {
       setContextRules(data || []);
     } catch (error) {
       console.error("Error fetching context rules:", error);
+      setError("Failed to load context rules. Please try again.");
     }
   };
 
   const fetchLogs = async () => {
     setLoading(true);
+    setError(null);
     try {
       let query = supabase
         .from("ai_interaction_logs")
@@ -104,7 +109,11 @@ const AIInteractionLogs = () => {
       }
 
       if (contextFilter) {
-        query = query.eq("context_rule_id", contextFilter);
+        if (contextFilter === "null") {
+          query = query.is("context_rule_id", null);
+        } else {
+          query = query.eq("context_rule_id", contextFilter);
+        }
       }
 
       if (dateRange.from) {
@@ -137,6 +146,8 @@ const AIInteractionLogs = () => {
       }
     } catch (error) {
       console.error("Error fetching AI interaction logs:", error);
+      setError("Failed to load interaction logs. Please try again.");
+      setLogs([]);
     } finally {
       setLoading(false);
     }
@@ -150,7 +161,8 @@ const AIInteractionLogs = () => {
 
   const handleExport = async () => {
     try {
-      setLoading(true);
+      setExportLoading(true);
+      setError(null);
 
       // Fetch all logs with current filters but no pagination
       let query = supabase
@@ -170,7 +182,11 @@ const AIInteractionLogs = () => {
       }
 
       if (contextFilter) {
-        query = query.eq("context_rule_id", contextFilter);
+        if (contextFilter === "null") {
+          query = query.is("context_rule_id", null);
+        } else {
+          query = query.eq("context_rule_id", contextFilter);
+        }
       }
 
       if (dateRange.from) {
@@ -196,6 +212,10 @@ const AIInteractionLogs = () => {
           response: log.response,
           model_used: log.model_used,
           context_rule: log.context_rule?.name || "None",
+          knowledge_base_results: log.knowledge_base_results || 0,
+          knowledge_base_ids: Array.isArray(log.knowledge_base_ids)
+            ? log.knowledge_base_ids.join(";")
+            : "",
           created_at: log.created_at,
         }));
 
@@ -205,9 +225,18 @@ const AIInteractionLogs = () => {
           headers.join(","),
           ...csvData.map((row) =>
             headers
-              .map((header) =>
-                JSON.stringify((row as any)[header] || "").replace(/\n/g, " "),
-              )
+              .map((header) => {
+                const value = (row as any)[header];
+                // Handle different data types appropriately
+                if (value === null || value === undefined) {
+                  return "";
+                } else if (typeof value === "string") {
+                  // Escape quotes and remove newlines
+                  return `"${value.replace(/"/g, '""').replace(/\n/g, " ")}"`;
+                } else {
+                  return `"${String(value).replace(/"/g, '""')}"`;
+                }
+              })
               .join(","),
           ),
         ].join("\n");
@@ -221,16 +250,22 @@ const AIInteractionLogs = () => {
         link.setAttribute("href", url);
         link.setAttribute(
           "download",
-          `ai-interaction-logs-${new Date().toISOString()}.csv`,
+          `ai-interaction-logs-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.csv`,
         );
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+
+        // Clean up the URL object
+        setTimeout(() => URL.revokeObjectURL(url), 100);
+      } else {
+        setError("No data available to export with the current filters.");
       }
     } catch (error) {
       console.error("Error exporting logs:", error);
+      setError("Failed to export logs. Please try again.");
     } finally {
-      setLoading(false);
+      setExportLoading(false);
     }
   };
 
@@ -251,6 +286,11 @@ const AIInteractionLogs = () => {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {error && (
+          <div className="mb-4 p-3 bg-destructive/10 border border-destructive text-destructive rounded-md">
+            <p className="text-sm font-medium">{error}</p>
+          </div>
+        )}
         <div className="space-y-4">
           <div className="flex flex-col md:flex-row gap-4">
             <form onSubmit={handleSearch} className="flex-1 flex gap-2">
@@ -272,10 +312,19 @@ const AIInteractionLogs = () => {
               variant="outline"
               className="flex items-center gap-2"
               onClick={handleExport}
-              disabled={loading || logs.length === 0}
+              disabled={loading || exportLoading || logs.length === 0}
             >
-              <Download className="h-4 w-4" />
-              Export
+              {exportLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4" />
+                  Export
+                </>
+              )}
             </Button>
           </div>
 

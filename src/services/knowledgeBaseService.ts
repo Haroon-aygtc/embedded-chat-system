@@ -339,25 +339,71 @@ class KnowledgeBaseService {
     params: KnowledgeBaseQuery,
   ): Promise<QueryResult[]> {
     try {
-      // For demo purposes, we'll return mock data
-      // In a real implementation, you would connect to the database using the connection string
-      // and execute a query
+      if (!kb.connectionString) {
+        throw new Error(
+          "Connection string is required for database knowledge base",
+        );
+      }
 
-      // Mock data
-      const results: QueryResult[] = [
-        {
-          source: kb.name,
-          content: `Database result for query: ${params.query}`,
-          metadata: {
-            table: "documents",
-            knowledgeBaseId: kb.id,
-          },
-          relevanceScore: 0.85,
-          timestamp: new Date().toISOString(),
-        },
-      ];
+      // Check cache first
+      const cacheKey = `db-${kb.id}-${params.query}`;
+      const cachedResult = this.getFromCache(cacheKey);
+      if (cachedResult) {
+        return cachedResult;
+      }
 
-      return results;
+      // In a production environment, you would:
+      // 1. Parse the connection string to determine the database type
+      // 2. Establish a connection to the database
+      // 3. Execute a query based on the params.query
+      // 4. Transform the results to QueryResult format
+
+      // For now, we'll use a direct Supabase query if the connection string is a Supabase URL
+      if (kb.connectionString.includes("supabase")) {
+        try {
+          // Extract table name from parameters
+          const tableName = kb.parameters?.table || "documents";
+          const searchColumn = kb.parameters?.searchColumn || "content";
+
+          const { data, error } = await supabase
+            .from(tableName)
+            .select("*")
+            .textSearch(searchColumn, params.query)
+            .limit(params.limit || 5);
+
+          if (error) throw error;
+
+          if (data && data.length > 0) {
+            const results: QueryResult[] = data.map((item) => ({
+              source: `${kb.name} (${tableName})`,
+              content:
+                item[searchColumn] ||
+                item.content ||
+                item.text ||
+                JSON.stringify(item),
+              metadata: {
+                ...item,
+                table: tableName,
+                knowledgeBaseId: kb.id,
+              },
+              relevanceScore: 0.9, // We don't have actual relevance scores from simple queries
+              timestamp: item.created_at || new Date().toISOString(),
+            }));
+
+            // Cache the results
+            this.addToCache(cacheKey, results);
+            return results;
+          }
+        } catch (dbError) {
+          logger.error(`Error querying Supabase database: ${dbError}`);
+          // Fall through to return empty results
+        }
+      }
+
+      logger.warn(
+        `Database connection not implemented for: ${kb.connectionString}`,
+      );
+      return [];
     } catch (error) {
       logger.error(`Error querying database knowledge base ${kb.id}`, error);
       return [];
@@ -372,24 +418,151 @@ class KnowledgeBaseService {
     params: KnowledgeBaseQuery,
   ): Promise<QueryResult[]> {
     try {
-      // Similar to API knowledge base, but with CMS-specific handling
-      // For demo purposes, we'll return mock data
+      // Check cache first
+      const cacheKey = `cms-${kb.id}-${params.query}`;
+      const cachedResult = this.getFromCache(cacheKey);
+      if (cachedResult) {
+        return cachedResult;
+      }
 
-      // Mock data
-      const results: QueryResult[] = [
-        {
-          source: kb.name,
-          content: `CMS content for query: ${params.query}`,
-          metadata: {
-            contentType: "article",
-            knowledgeBaseId: kb.id,
-          },
-          relevanceScore: 0.78,
-          timestamp: new Date().toISOString(),
-        },
-      ];
+      if (!kb.endpoint) {
+        throw new Error("API endpoint is required for CMS knowledge base");
+      }
 
-      return results;
+      // Prepare request headers
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      if (kb.apiKey) {
+        // Different CMS systems use different authentication methods
+        if (kb.parameters?.authType === "bearer") {
+          headers["Authorization"] = `Bearer ${kb.apiKey}`;
+        } else if (kb.parameters?.authType === "apikey") {
+          headers["X-API-Key"] = kb.apiKey;
+        } else {
+          // Default to bearer token
+          headers["Authorization"] = `Bearer ${kb.apiKey}`;
+        }
+      }
+
+      // Prepare request parameters based on CMS type
+      let requestParams: any = {
+        query: params.query,
+        limit: params.limit || 5,
+      };
+
+      // Handle different CMS types (WordPress, Contentful, Strapi, etc.)
+      if (kb.parameters?.cmsType === "contentful") {
+        requestParams = {
+          query: `{
+            ${kb.parameters.contentType || "article"}Collection(where: {${kb.parameters.searchField || "content"}_contains: "${params.query}"}, limit: ${params.limit || 5}) {
+              items {
+                ${kb.parameters.fields || "title content sys { id }"}
+              }
+            }
+          }`,
+        };
+      } else if (kb.parameters?.cmsType === "wordpress") {
+        // WordPress REST API format
+        const endpoint = `${kb.endpoint}/wp-json/wp/v2/${kb.parameters.contentType || "posts"}?search=${encodeURIComponent(params.query)}&per_page=${params.limit || 5}`;
+
+        try {
+          const response = await axios.get(endpoint, { headers });
+
+          if (response.data && Array.isArray(response.data)) {
+            const results: QueryResult[] = response.data.map((item: any) => ({
+              source: `${kb.name} (WordPress)`,
+              content:
+                item.content?.rendered ||
+                item.excerpt?.rendered ||
+                JSON.stringify(item),
+              metadata: {
+                id: item.id,
+                title: item.title?.rendered,
+                url: item.link,
+                contentType: kb.parameters?.contentType || "post",
+                knowledgeBaseId: kb.id,
+              },
+              relevanceScore: 0.8, // WordPress doesn't provide relevance scores
+              timestamp: item.modified || item.date || new Date().toISOString(),
+            }));
+
+            // Cache the results
+            this.addToCache(cacheKey, results);
+            return results;
+          }
+        } catch (wpError) {
+          logger.error(`Error querying WordPress API: ${wpError}`);
+          // Fall through to generic API request
+        }
+      }
+
+      // Generic API request for other CMS types
+      try {
+        const response = await axios.post(kb.endpoint, requestParams, {
+          headers,
+        });
+
+        // Transform the response to QueryResult format based on CMS type
+        let results: QueryResult[] = [];
+
+        if (kb.parameters?.cmsType === "contentful" && response.data?.data) {
+          const contentType = kb.parameters.contentType || "article";
+          const items =
+            response.data.data[`${contentType}Collection`]?.items || [];
+
+          results = items.map((item: any) => ({
+            source: `${kb.name} (Contentful)`,
+            content:
+              item.content ||
+              item.body ||
+              item.description ||
+              JSON.stringify(item),
+            metadata: {
+              id: item.sys?.id,
+              title: item.title,
+              contentType: contentType,
+              knowledgeBaseId: kb.id,
+            },
+            relevanceScore: 0.85,
+            timestamp: new Date().toISOString(),
+          }));
+        } else if (
+          response.data?.results ||
+          response.data?.items ||
+          response.data?.data
+        ) {
+          // Generic handling for various CMS response formats
+          const items =
+            response.data.results ||
+            response.data.items ||
+            response.data.data ||
+            [];
+
+          results = items.map((item: any) => ({
+            source: kb.name,
+            content:
+              item.content ||
+              item.text ||
+              item.description ||
+              JSON.stringify(item),
+            metadata: {
+              ...item,
+              knowledgeBaseId: kb.id,
+            },
+            relevanceScore: item.score || item.relevance || 0.8,
+            timestamp: item.timestamp || item.date || new Date().toISOString(),
+          }));
+        }
+
+        // Cache the results
+        this.addToCache(cacheKey, results);
+        return results;
+      } catch (apiError) {
+        logger.error(`Error querying CMS API: ${apiError}`);
+        return [];
+      }
     } catch (error) {
       logger.error(`Error querying CMS knowledge base ${kb.id}`, error);
       return [];
@@ -467,25 +640,91 @@ class KnowledgeBaseService {
     params: KnowledgeBaseQuery,
   ): Promise<QueryResult[]> {
     try {
-      // For demo purposes, we'll return mock data
-      // In a real implementation, you would search through indexed files
+      // Check cache first
+      const cacheKey = `file-${kb.id}-${params.query}`;
+      const cachedResult = this.getFromCache(cacheKey);
+      if (cachedResult) {
+        return cachedResult;
+      }
 
-      // Mock data
-      const results: QueryResult[] = [
-        {
-          source: kb.name,
-          content: `File content for query: ${params.query}`,
-          metadata: {
-            fileName: "document.pdf",
-            fileType: "pdf",
-            knowledgeBaseId: kb.id,
-          },
-          relevanceScore: 0.72,
-          timestamp: new Date().toISOString(),
-        },
-      ];
+      // In a production environment, this would connect to a file indexing service
+      // or a document search API that has indexed the files
 
-      return results;
+      // If the endpoint is provided, it's likely a document search API
+      if (kb.endpoint) {
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+
+        if (kb.apiKey) {
+          headers["Authorization"] = `Bearer ${kb.apiKey}`;
+        }
+
+        // Prepare request parameters
+        const requestParams = {
+          query: params.query,
+          filters: params.filters,
+          limit: params.limit || 5,
+          ...kb.parameters,
+        };
+
+        try {
+          const response = await axios.post(kb.endpoint, requestParams, {
+            headers,
+          });
+
+          // Transform the response to QueryResult format
+          if (
+            response.data?.results ||
+            response.data?.documents ||
+            response.data?.files
+          ) {
+            const items =
+              response.data.results ||
+              response.data.documents ||
+              response.data.files ||
+              [];
+
+            const results: QueryResult[] = items.map((item: any) => ({
+              source: `${kb.name} (${item.fileName || item.name || "Document"})`,
+              content: item.content || item.text || item.extract || "",
+              metadata: {
+                fileName: item.fileName || item.name,
+                fileType:
+                  item.fileType || item.extension || item.type || "unknown",
+                fileSize: item.fileSize || item.size,
+                url: item.url || item.downloadUrl,
+                knowledgeBaseId: kb.id,
+              },
+              relevanceScore: item.score || item.relevance || 0.7,
+              timestamp:
+                item.timestamp ||
+                item.lastModified ||
+                item.created ||
+                new Date().toISOString(),
+            }));
+
+            // Cache the results
+            this.addToCache(cacheKey, results);
+            return results;
+          }
+        } catch (apiError) {
+          logger.error(`Error querying file search API: ${apiError}`);
+          // Fall through to return empty results
+        }
+      }
+
+      // If we're using Supabase storage, we could potentially query that
+      if (kb.parameters?.useSupabaseStorage) {
+        logger.info("Supabase storage search is not yet implemented");
+        // This would require a separate indexing mechanism as Supabase storage
+        // doesn't provide content search capabilities directly
+      }
+
+      logger.warn(
+        `File search not fully implemented for knowledge base: ${kb.id}`,
+      );
+      return [];
     } catch (error) {
       logger.error(`Error querying file knowledge base ${kb.id}`, error);
       return [];

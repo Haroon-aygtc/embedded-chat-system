@@ -335,8 +335,11 @@ const ContextRulesEditor = () => {
 
     try {
       setIsTestingRule(true);
+      setTestResult(null);
+      setError(null);
       const result = await contextRulesApi.testRule(selectedRule.id, testQuery);
       setTestResult(result);
+      setIsTestDialogOpen(true);
     } catch (error) {
       import("@/utils/logger").then((module) => {
         const logger = module.default;
@@ -456,6 +459,31 @@ const ContextRulesEditor = () => {
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>Preview</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  setSelectedRule(rule);
+                                  setTestQuery("");
+                                  setTestResult(null);
+                                  setIsTestDialogOpen(true);
+                                }}
+                              >
+                                <div className="relative">
+                                  <span className="absolute -top-1 -right-1 text-xs bg-primary text-primary-foreground rounded-full w-3 h-3 flex items-center justify-center">
+                                    ?
+                                  </span>
+                                  <span className="sr-only">Test</span>
+                                </div>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Test Rule</TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
 
@@ -914,6 +942,229 @@ const ContextRulesEditor = () => {
           </Card>
         </TabsContent>
       </Tabs>
+      {/* Test Dialog */}
+      <Dialog open={isTestDialogOpen} onOpenChange={setIsTestDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Test Context Rule: {selectedRule?.name}</DialogTitle>
+            <DialogDescription>
+              Enter a query to test how this context rule would respond
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="flex space-x-2">
+              <Input
+                value={testQuery}
+                onChange={(e) => setTestQuery(e.target.value)}
+                placeholder="Enter a test query..."
+                className="flex-1"
+              />
+              <Button onClick={handleTestRule} disabled={isTestingRule}>
+                {isTestingRule ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Testing...
+                  </>
+                ) : (
+                  "Test"
+                )}
+              </Button>
+            </div>
+
+            {testResult && (
+              <div className="space-y-4 border rounded-md p-4">
+                <div>
+                  <h4 className="text-sm font-semibold mb-1">
+                    Matched Keywords:
+                  </h4>
+                  <div className="flex flex-wrap gap-1">
+                    {testResult.matches.length > 0 ? (
+                      testResult.matches.map((keyword) => (
+                        <Badge key={keyword} variant="secondary">
+                          {keyword}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-sm text-muted-foreground">
+                        No keywords matched
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold mb-1">AI Response:</h4>
+                  <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap">
+                    {testResult.result}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsTestDialogOpen(false)}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Preview Dialog */}
+      <Dialog open={isPreviewDialogOpen} onOpenChange={setIsPreviewDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              Context Rule Preview: {selectedRule?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Review the configuration of this context rule
+            </DialogDescription>
+          </DialogHeader>
+          {selectedRule && (
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <h4 className="text-sm font-semibold mb-1">Description:</h4>
+                  <p className="text-sm">{selectedRule.description}</p>
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold mb-1">Status:</h4>
+                  <Badge
+                    variant={selectedRule.isActive ? "default" : "outline"}
+                  >
+                    {selectedRule.isActive ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-semibold mb-1">Keywords:</h4>
+                <div className="flex flex-wrap gap-1">
+                  {selectedRule.keywords.map((keyword) => (
+                    <Badge key={keyword} variant="secondary">
+                      {keyword}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              {selectedRule.excludedTopics &&
+                selectedRule.excludedTopics.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-1">
+                      Excluded Topics:
+                    </h4>
+                    <div className="flex flex-wrap gap-1">
+                      {selectedRule.excludedTopics.map((topic) => (
+                        <Badge
+                          key={topic}
+                          variant="outline"
+                          className="bg-destructive/10 text-destructive"
+                        >
+                          {topic}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              {selectedRule.promptTemplate && (
+                <div>
+                  <h4 className="text-sm font-semibold mb-1">
+                    Prompt Template:
+                  </h4>
+                  <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap">
+                    {selectedRule.promptTemplate}
+                  </div>
+                </div>
+              )}
+
+              {selectedRule.responseFilters &&
+                selectedRule.responseFilters.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-1">
+                      Response Filters:
+                    </h4>
+                    <div className="flex flex-wrap gap-1">
+                      {selectedRule.responseFilters.map((filter, index) => (
+                        <Badge key={index} variant="outline">
+                          {filter.type}: {filter.value} ({filter.action})
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              {selectedRule.useKnowledgeBases && (
+                <div>
+                  <h4 className="text-sm font-semibold mb-1">
+                    Knowledge Bases:
+                  </h4>
+                  <Badge
+                    variant="secondary"
+                    className="bg-blue-100 text-blue-800"
+                  >
+                    Enabled
+                  </Badge>
+                  {selectedRule.knowledgeBaseIds &&
+                    selectedRule.knowledgeBaseIds.length > 0 && (
+                      <div className="mt-2">
+                        <h5 className="text-xs font-medium mb-1">
+                          Linked Knowledge Bases:
+                        </h5>
+                        <div className="flex flex-wrap gap-1">
+                          {selectedRule.knowledgeBaseIds.map((id) => {
+                            const kb = knowledgeBases.find(
+                              (kb) => kb.id === id,
+                            );
+                            return (
+                              <Badge
+                                key={id}
+                                variant="outline"
+                                className="text-xs"
+                              >
+                                {kb?.name || id}
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                </div>
+              )}
+
+              {selectedRule.preferredModel && (
+                <div>
+                  <h4 className="text-sm font-semibold mb-1">
+                    Preferred Model:
+                  </h4>
+                  <Badge variant="outline">{selectedRule.preferredModel}</Badge>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsPreviewDialogOpen(false)}
+            >
+              Close
+            </Button>
+            <Button
+              onClick={() => {
+                setIsPreviewDialogOpen(false);
+                handleEditRule(selectedRule!);
+              }}
+            >
+              <Edit className="h-4 w-4 mr-2" />
+              Edit
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
