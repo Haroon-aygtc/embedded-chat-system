@@ -9,6 +9,180 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      ai_response_cache: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          metadata: Json | null
+          model_used: string
+          prompt: string
+          prompt_hash: string
+          response: string
+          updated_at: string
+        }
+        Insert: {
+          created_at: string
+          expires_at: string
+          id?: string
+          metadata?: Json | null
+          model_used: string
+          prompt: string
+          prompt_hash: string
+          response: string
+          updated_at: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          metadata?: Json | null
+          model_used?: string
+          prompt?: string
+          prompt_hash?: string
+          response?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      analytics_data: {
+        Row: {
+          average_response_time: number | null
+          created_at: string | null
+          date: string
+          id: string
+          satisfaction_rate: number | null
+          total_conversations: number | null
+          total_messages: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          average_response_time?: number | null
+          created_at?: string | null
+          date: string
+          id?: string
+          satisfaction_rate?: number | null
+          total_conversations?: number | null
+          total_messages?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          average_response_time?: number | null
+          created_at?: string | null
+          date?: string
+          id?: string
+          satisfaction_rate?: number | null
+          total_conversations?: number | null
+          total_messages?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      analytics_messages_by_day: {
+        Row: {
+          count: number | null
+          created_at: string | null
+          date: string
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          count?: number | null
+          created_at?: string | null
+          date: string
+          id?: string
+          updated_at?: string | null
+        }
+        Update: {
+          count?: number | null
+          created_at?: string | null
+          date?: string
+          id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      analytics_model_usage: {
+        Row: {
+          count: number | null
+          created_at: string | null
+          date: string
+          id: string
+          model: string
+          percentage: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          count?: number | null
+          created_at?: string | null
+          date: string
+          id?: string
+          model: string
+          percentage?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          count?: number | null
+          created_at?: string | null
+          date?: string
+          id?: string
+          model?: string
+          percentage?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      analytics_top_queries: {
+        Row: {
+          count: number | null
+          created_at: string | null
+          id: string
+          query: string
+          updated_at: string | null
+        }
+        Insert: {
+          count?: number | null
+          created_at?: string | null
+          id?: string
+          query: string
+          updated_at?: string | null
+        }
+        Update: {
+          count?: number | null
+          created_at?: string | null
+          id?: string
+          query?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      api_key_rotations: {
+        Row: {
+          created_at: string | null
+          id: string
+          key_type: string
+          metadata: Json | null
+          rotated_at: string
+          rotated_by: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          key_type: string
+          metadata?: Json | null
+          rotated_at: string
+          rotated_by: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          key_type?: string
+          metadata?: Json | null
+          rotated_at?: string
+          rotated_by?: string
+        }
+        Relationships: []
+      }
       api_key_usage: {
         Row: {
           api_key_id: string
@@ -540,6 +714,71 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      system_settings: {
+        Row: {
+          category: string
+          created_at: string | null
+          created_by: string | null
+          environment: string | null
+          id: string
+          settings: Json
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          category: string
+          created_at?: string | null
+          created_by?: string | null
+          environment?: string | null
+          id?: string
+          settings: Json
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          created_by?: string | null
+          environment?: string | null
+          id?: string
+          settings?: Json
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      system_settings_history: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          settings: Json
+          settings_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          settings: Json
+          settings_id: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          settings?: Json
+          settings_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "system_settings_history_settings_id_fkey"
+            columns: ["settings_id"]
+            isOneToOne: false
+            referencedRelation: "system_settings"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_activity: {
         Row: {

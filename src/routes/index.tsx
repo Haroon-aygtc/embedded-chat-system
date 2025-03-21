@@ -10,6 +10,7 @@ import ChatPage from "../pages/chat";
 import ChatEmbedPage from "../pages/chat-embed";
 import ProtectedRoute from "../components/auth/ProtectedRoute";
 import AdminRoute from "../components/auth/AdminRoute";
+import ApiKeysPage from "../pages/admin/api-keys";
 
 const AppRoutes = () => {
   return (
@@ -33,6 +34,14 @@ const AppRoutes = () => {
         element={
           <AdminRoute>
             <Dashboard />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/admin/api-keys"
+        element={
+          <AdminRoute>
+            <ApiKeysPage />
           </AdminRoute>
         }
       />

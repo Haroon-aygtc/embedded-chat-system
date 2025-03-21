@@ -13,6 +13,7 @@ import {
   ChevronDown,
   ChevronRight,
   LogOut,
+  Key,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -112,6 +113,12 @@ const Sidebar = ({
       label: "Analytics",
       icon: <BarChart3 size={20} />,
       path: "/admin/analytics",
+    },
+    {
+      id: "apiKeys",
+      label: "API Keys",
+      icon: <Key size={20} />,
+      path: "/admin/api-keys",
     },
     {
       id: "users",

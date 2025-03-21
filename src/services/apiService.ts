@@ -6,8 +6,31 @@ import api from "./axiosConfig";
 export const contextRulesApi = {
   getAll: async (): Promise<ContextRule[]> => {
     try {
-      const response = await api.get("/context-rules");
-      return response.data;
+      const { data, error } = await window.supabase
+        .from("context_rules")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      // Transform the data to match the ContextRule type
+      return (data || []).map((rule) => ({
+        id: rule.id,
+        name: rule.name,
+        description: rule.description || "",
+        isActive: rule.is_active,
+        contextType: rule.context_type,
+        keywords: rule.keywords || [],
+        excludedTopics: rule.excluded_topics || [],
+        promptTemplate: rule.prompt_template || "",
+        responseFilters: rule.response_filters || [],
+        useKnowledgeBases: rule.use_knowledge_bases || false,
+        knowledgeBaseIds: rule.knowledge_base_ids || [],
+        preferredModel: rule.preferred_model,
+        version: rule.version || 1,
+        createdAt: rule.created_at,
+        updatedAt: rule.updated_at,
+      }));
     } catch (error) {
       import("@/utils/logger").then((module) => {
         const logger = module.default;
@@ -65,8 +88,32 @@ export const contextRulesApi = {
 
   getById: async (id: string): Promise<ContextRule> => {
     try {
-      const response = await api.get(`/context-rules/${id}`);
-      return response.data;
+      const { data, error } = await window.supabase
+        .from("context_rules")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (error) throw error;
+
+      // Transform the data to match the ContextRule type
+      return {
+        id: data.id,
+        name: data.name,
+        description: data.description || "",
+        isActive: data.is_active,
+        contextType: data.context_type,
+        keywords: data.keywords || [],
+        excludedTopics: data.excluded_topics || [],
+        promptTemplate: data.prompt_template || "",
+        responseFilters: data.response_filters || [],
+        useKnowledgeBases: data.use_knowledge_bases || false,
+        knowledgeBaseIds: data.knowledge_base_ids || [],
+        preferredModel: data.preferred_model,
+        version: data.version || 1,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      };
     } catch (error) {
       import("@/utils/logger").then((module) => {
         const logger = module.default;
@@ -91,8 +138,65 @@ export const contextRulesApi = {
     rule: Omit<ContextRule, "id" | "createdAt" | "updatedAt">,
   ): Promise<ContextRule> => {
     try {
-      const response = await api.post("/context-rules", rule);
-      return response.data;
+      // Transform the data to match the database schema
+      const dbRule = {
+        name: rule.name,
+        description: rule.description,
+        is_active: rule.isActive,
+        context_type: rule.contextType,
+        keywords: rule.keywords,
+        excluded_topics: rule.excludedTopics,
+        prompt_template: rule.promptTemplate,
+        response_filters: rule.responseFilters,
+        use_knowledge_bases: rule.useKnowledgeBases,
+        knowledge_base_ids: rule.knowledgeBaseIds,
+        preferred_model: rule.preferredModel,
+        version: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await window.supabase
+        .from("context_rules")
+        .insert([dbRule])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Also create a version record
+      const versionData = {
+        rule_id: data.id,
+        version: 1,
+        data: dbRule,
+      };
+
+      const { error: versionError } = await window.supabase
+        .from("context_rule_versions")
+        .insert([versionData]);
+
+      if (versionError) {
+        console.error("Error creating version record:", versionError);
+      }
+
+      // Transform back to ContextRule type
+      return {
+        id: data.id,
+        name: data.name,
+        description: data.description || "",
+        isActive: data.is_active,
+        contextType: data.context_type,
+        keywords: data.keywords || [],
+        excludedTopics: data.excluded_topics || [],
+        promptTemplate: data.prompt_template || "",
+        responseFilters: data.response_filters || [],
+        useKnowledgeBases: data.use_knowledge_bases || false,
+        knowledgeBaseIds: data.knowledge_base_ids || [],
+        preferredModel: data.preferred_model,
+        version: data.version || 1,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      };
     } catch (error) {
       import("@/utils/logger").then((module) => {
         const logger = module.default;
@@ -117,8 +221,82 @@ export const contextRulesApi = {
     rule: Partial<ContextRule>,
   ): Promise<ContextRule> => {
     try {
-      const response = await api.put(`/context-rules/${id}`, rule);
-      return response.data;
+      // Get the current version
+      const { data: currentRule, error: fetchError } = await window.supabase
+        .from("context_rules")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Transform the data to match the database schema
+      const dbRule: any = {};
+      if (rule.name !== undefined) dbRule.name = rule.name;
+      if (rule.description !== undefined) dbRule.description = rule.description;
+      if (rule.isActive !== undefined) dbRule.is_active = rule.isActive;
+      if (rule.contextType !== undefined)
+        dbRule.context_type = rule.contextType;
+      if (rule.keywords !== undefined) dbRule.keywords = rule.keywords;
+      if (rule.excludedTopics !== undefined)
+        dbRule.excluded_topics = rule.excludedTopics;
+      if (rule.promptTemplate !== undefined)
+        dbRule.prompt_template = rule.promptTemplate;
+      if (rule.responseFilters !== undefined)
+        dbRule.response_filters = rule.responseFilters;
+      if (rule.useKnowledgeBases !== undefined)
+        dbRule.use_knowledge_bases = rule.useKnowledgeBases;
+      if (rule.knowledgeBaseIds !== undefined)
+        dbRule.knowledge_base_ids = rule.knowledgeBaseIds;
+      if (rule.preferredModel !== undefined)
+        dbRule.preferred_model = rule.preferredModel;
+
+      // Increment version
+      dbRule.version = (currentRule.version || 1) + 1;
+      dbRule.updated_at = new Date().toISOString();
+
+      const { data, error } = await window.supabase
+        .from("context_rules")
+        .update(dbRule)
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Create a version record
+      const versionData = {
+        rule_id: id,
+        version: dbRule.version,
+        data: { ...currentRule, ...dbRule },
+      };
+
+      const { error: versionError } = await window.supabase
+        .from("context_rule_versions")
+        .insert([versionData]);
+
+      if (versionError) {
+        console.error("Error creating version record:", versionError);
+      }
+
+      // Transform back to ContextRule type
+      return {
+        id: data.id,
+        name: data.name,
+        description: data.description || "",
+        isActive: data.is_active,
+        contextType: data.context_type,
+        keywords: data.keywords || [],
+        excludedTopics: data.excluded_topics || [],
+        promptTemplate: data.prompt_template || "",
+        responseFilters: data.response_filters || [],
+        useKnowledgeBases: data.use_knowledge_bases || false,
+        knowledgeBaseIds: data.knowledge_base_ids || [],
+        preferredModel: data.preferred_model,
+        version: data.version || 1,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      };
     } catch (error) {
       import("@/utils/logger").then((module) => {
         const logger = module.default;
@@ -140,7 +318,12 @@ export const contextRulesApi = {
 
   delete: async (id: string): Promise<void> => {
     try {
-      await api.delete(`/context-rules/${id}`);
+      const { error } = await window.supabase
+        .from("context_rules")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
     } catch (error) {
       import("@/utils/logger").then((module) => {
         const logger = module.default;
@@ -158,10 +341,20 @@ export const contextRulesApi = {
     query: string,
   ): Promise<{ result: string; matches: string[] }> => {
     try {
-      const response = await api.post(`/context-rules/${ruleId}/test`, {
-        query,
-      });
-      return response.data;
+      // Get the rule
+      const rule = await contextRulesApi.getById(ruleId);
+
+      // Simple implementation: check if any keywords match
+      const matches = rule.keywords.filter((keyword) =>
+        query.toLowerCase().includes(keyword.toLowerCase()),
+      );
+
+      let result = "This query does not match the context rule.";
+      if (matches.length > 0) {
+        result = `This query matches the context rule with ${matches.length} keyword(s): ${matches.join(", ")}. The AI would respond using the context rule's prompt template.`;
+      }
+
+      return { result, matches };
     } catch (error) {
       import("@/utils/logger").then((module) => {
         const logger = module.default;
@@ -177,14 +370,132 @@ export const contextRulesApi = {
       };
     }
   },
+
+  getVersions: async (ruleId: string): Promise<any[]> => {
+    try {
+      const { data, error } = await window.supabase
+        .from("context_rule_versions")
+        .select("*")
+        .eq("rule_id", ruleId)
+        .order("version", { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error fetching context rule versions for ${ruleId}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+      return [];
+    }
+  },
+
+  restoreVersion: async (
+    ruleId: string,
+    version: number,
+  ): Promise<ContextRule> => {
+    try {
+      // Get the version data
+      const { data: versionData, error: versionError } = await window.supabase
+        .from("context_rule_versions")
+        .select("*")
+        .eq("rule_id", ruleId)
+        .eq("version", version)
+        .single();
+
+      if (versionError) throw versionError;
+
+      // Get the current version
+      const { data: currentRule, error: currentError } = await window.supabase
+        .from("context_rules")
+        .select("version")
+        .eq("id", ruleId)
+        .single();
+
+      if (currentError) throw currentError;
+
+      // Update the rule with the version data
+      const restoredData = versionData.data;
+      restoredData.version = (currentRule.version || 1) + 1;
+      restoredData.updated_at = new Date().toISOString();
+
+      const { data, error } = await window.supabase
+        .from("context_rules")
+        .update(restoredData)
+        .eq("id", ruleId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Create a new version record for the restoration
+      const newVersionData = {
+        rule_id: ruleId,
+        version: restoredData.version,
+        data: restoredData,
+      };
+
+      await window.supabase
+        .from("context_rule_versions")
+        .insert([newVersionData]);
+
+      // Transform back to ContextRule type
+      return {
+        id: data.id,
+        name: data.name,
+        description: data.description || "",
+        isActive: data.is_active,
+        contextType: data.context_type,
+        keywords: data.keywords || [],
+        excludedTopics: data.excluded_topics || [],
+        promptTemplate: data.prompt_template || "",
+        responseFilters: data.response_filters || [],
+        useKnowledgeBases: data.use_knowledge_bases || false,
+        knowledgeBaseIds: data.knowledge_base_ids || [],
+        preferredModel: data.preferred_model,
+        version: data.version || 1,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      };
+    } catch (error) {
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error restoring context rule version ${version} for ${ruleId}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+      throw error;
+    }
+  },
 };
 
 // Prompt Templates API
 export const promptTemplatesApi = {
   getAll: async (): Promise<PromptTemplate[]> => {
     try {
-      const response = await api.get("/prompt-templates");
-      return response.data;
+      const { data, error } = await window.supabase
+        .from("prompt_templates")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      // Transform the data to match the PromptTemplate type
+      return (data || []).map((template) => ({
+        id: template.id,
+        name: template.name,
+        description: template.description || "",
+        template: template.template,
+        category: template.category || "general",
+        variables: template.variables || [],
+        version: template.version || 1,
+        createdAt: template.created_at,
+        updatedAt: template.updated_at,
+      }));
     } catch (error) {
       import("@/utils/logger").then((module) => {
         const logger = module.default;
@@ -236,8 +547,26 @@ export const promptTemplatesApi = {
 
   getById: async (id: string): Promise<PromptTemplate> => {
     try {
-      const response = await api.get(`/prompt-templates/${id}`);
-      return response.data;
+      const { data, error } = await window.supabase
+        .from("prompt_templates")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (error) throw error;
+
+      // Transform the data to match the PromptTemplate type
+      return {
+        id: data.id,
+        name: data.name,
+        description: data.description || "",
+        template: data.template,
+        category: data.category || "general",
+        variables: data.variables || [],
+        version: data.version || 1,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      };
     } catch (error) {
       import("@/utils/logger").then((module) => {
         const logger = module.default;
@@ -262,8 +591,53 @@ export const promptTemplatesApi = {
     template: Omit<PromptTemplate, "id" | "createdAt" | "updatedAt">,
   ): Promise<PromptTemplate> => {
     try {
-      const response = await api.post("/prompt-templates", template);
-      return response.data;
+      // Transform the data to match the database schema
+      const dbTemplate = {
+        name: template.name,
+        description: template.description,
+        template: template.template,
+        category: template.category,
+        variables: template.variables,
+        version: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await window.supabase
+        .from("prompt_templates")
+        .insert([dbTemplate])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Also create a version record
+      const versionData = {
+        template_id: data.id,
+        version: 1,
+        data: dbTemplate,
+      };
+
+      const { error: versionError } = await window.supabase
+        .from("prompt_template_versions")
+        .insert([versionData]);
+
+      if (versionError) {
+        console.error("Error creating version record:", versionError);
+      }
+
+      // Transform back to PromptTemplate type
+      return {
+        id: data.id,
+        name: data.name,
+        description: data.description || "",
+        template: data.template,
+        category: data.category || "general",
+        variables: data.variables || [],
+        version: data.version || 1,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      };
     } catch (error) {
       import("@/utils/logger").then((module) => {
         const logger = module.default;
@@ -288,8 +662,67 @@ export const promptTemplatesApi = {
     template: Partial<PromptTemplate>,
   ): Promise<PromptTemplate> => {
     try {
-      const response = await api.put(`/prompt-templates/${id}`, template);
-      return response.data;
+      // Get the current version
+      const { data: currentTemplate, error: fetchError } = await window.supabase
+        .from("prompt_templates")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Transform the data to match the database schema
+      const dbTemplate: any = {};
+      if (template.name !== undefined) dbTemplate.name = template.name;
+      if (template.description !== undefined)
+        dbTemplate.description = template.description;
+      if (template.template !== undefined)
+        dbTemplate.template = template.template;
+      if (template.category !== undefined)
+        dbTemplate.category = template.category;
+      if (template.variables !== undefined)
+        dbTemplate.variables = template.variables;
+
+      // Increment version
+      dbTemplate.version = (currentTemplate.version || 1) + 1;
+      dbTemplate.updated_at = new Date().toISOString();
+
+      const { data, error } = await window.supabase
+        .from("prompt_templates")
+        .update(dbTemplate)
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Create a version record
+      const versionData = {
+        template_id: id,
+        version: dbTemplate.version,
+        data: { ...currentTemplate, ...dbTemplate },
+      };
+
+      const { error: versionError } = await window.supabase
+        .from("prompt_template_versions")
+        .insert([versionData]);
+
+      if (versionError) {
+        console.error("Error creating version record:", versionError);
+      }
+
+      // Transform back to PromptTemplate type
+      return {
+        id: data.id,
+        name: data.name,
+        description: data.description || "",
+        template: data.template,
+        category: data.category || "general",
+        variables: data.variables || [],
+        version: data.version || 1,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      };
     } catch (error) {
       import("@/utils/logger").then((module) => {
         const logger = module.default;
@@ -311,7 +744,12 @@ export const promptTemplatesApi = {
 
   delete: async (id: string): Promise<void> => {
     try {
-      await api.delete(`/prompt-templates/${id}`);
+      const { error } = await window.supabase
+        .from("prompt_templates")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
     } catch (error) {
       import("@/utils/logger").then((module) => {
         const logger = module.default;
@@ -321,6 +759,102 @@ export const promptTemplatesApi = {
         );
       });
       // Silently fail for demo purposes
+    }
+  },
+
+  getVersions: async (templateId: string): Promise<any[]> => {
+    try {
+      const { data, error } = await window.supabase
+        .from("prompt_template_versions")
+        .select("*")
+        .eq("template_id", templateId)
+        .order("version", { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error fetching prompt template versions for ${templateId}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+      return [];
+    }
+  },
+
+  restoreVersion: async (
+    templateId: string,
+    version: number,
+  ): Promise<PromptTemplate> => {
+    try {
+      // Get the version data
+      const { data: versionData, error: versionError } = await window.supabase
+        .from("prompt_template_versions")
+        .select("*")
+        .eq("template_id", templateId)
+        .eq("version", version)
+        .single();
+
+      if (versionError) throw versionError;
+
+      // Get the current version
+      const { data: currentTemplate, error: currentError } =
+        await window.supabase
+          .from("prompt_templates")
+          .select("version")
+          .eq("id", templateId)
+          .single();
+
+      if (currentError) throw currentError;
+
+      // Update the template with the version data
+      const restoredData = versionData.data;
+      restoredData.version = (currentTemplate.version || 1) + 1;
+      restoredData.updated_at = new Date().toISOString();
+
+      const { data, error } = await window.supabase
+        .from("prompt_templates")
+        .update(restoredData)
+        .eq("id", templateId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Create a new version record for the restoration
+      const newVersionData = {
+        template_id: templateId,
+        version: restoredData.version,
+        data: restoredData,
+      };
+
+      await window.supabase
+        .from("prompt_template_versions")
+        .insert([newVersionData]);
+
+      // Transform back to PromptTemplate type
+      return {
+        id: data.id,
+        name: data.name,
+        description: data.description || "",
+        template: data.template,
+        category: data.category || "general",
+        variables: data.variables || [],
+        version: data.version || 1,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      };
+    } catch (error) {
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error restoring prompt template version ${version} for ${templateId}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+      throw error;
     }
   },
 };
@@ -443,8 +977,39 @@ export const analyticsApi = {
     userSatisfactionRate: number;
   }> => {
     try {
-      const response = await api.get(`/analytics/overview?period=${period}`);
-      return response.data;
+      // Calculate date range based on period
+      const today = new Date();
+      let startDate = new Date(today);
+
+      if (period === "day") {
+        startDate.setDate(today.getDate() - 1);
+      } else if (period === "week") {
+        startDate.setDate(today.getDate() - 7);
+      } else if (period === "month") {
+        startDate.setMonth(today.getMonth() - 1);
+      }
+
+      const { data, error } = await window.supabase
+        .from("analytics_data")
+        .select("*")
+        .gte("date", startDate.toISOString().split("T")[0])
+        .lte("date", today.toISOString().split("T")[0])
+        .order("date", { ascending: false });
+
+      if (error) throw error;
+
+      // If we have data, use the most recent entry
+      if (data && data.length > 0) {
+        const latestData = data[0];
+        return {
+          totalConversations: latestData.total_conversations,
+          totalMessages: latestData.total_messages,
+          averageResponseTime: latestData.average_response_time,
+          userSatisfactionRate: latestData.satisfaction_rate,
+        };
+      }
+
+      throw new Error("No analytics data found for the specified period");
     } catch (error) {
       import("@/utils/logger").then((module) => {
         const logger = module.default;
@@ -467,8 +1032,49 @@ export const analyticsApi = {
     days: number = 7,
   ): Promise<{ date: string; count: number }[]> => {
     try {
-      const response = await api.get(`/analytics/messages-by-day?days=${days}`);
-      return response.data;
+      const today = new Date();
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() - days + 1);
+
+      const { data, error } = await window.supabase
+        .from("analytics_messages_by_day")
+        .select("date, count")
+        .gte("date", startDate.toISOString().split("T")[0])
+        .lte("date", today.toISOString().split("T")[0])
+        .order("date", { ascending: true });
+
+      if (error) throw error;
+
+      // If we have data, format it correctly
+      if (data && data.length > 0) {
+        return data.map((item) => ({
+          date: item.date,
+          count: item.count,
+        }));
+      }
+
+      // If we don't have enough data, fill in the gaps
+      const result = [];
+      for (let i = 0; i < days; i++) {
+        const date = new Date(startDate);
+        date.setDate(startDate.getDate() + i);
+        const dateStr = date.toISOString().split("T")[0];
+
+        const existingData = data?.find((item) => item.date === dateStr);
+        if (existingData) {
+          result.push({
+            date: dateStr,
+            count: existingData.count,
+          });
+        } else {
+          result.push({
+            date: dateStr,
+            count: 0,
+          });
+        }
+      }
+
+      return result;
     } catch (error) {
       import("@/utils/logger").then((module) => {
         const logger = module.default;
@@ -499,8 +1105,15 @@ export const analyticsApi = {
     limit: number = 10,
   ): Promise<{ query: string; count: number }[]> => {
     try {
-      const response = await api.get(`/analytics/top-queries?limit=${limit}`);
-      return response.data;
+      const { data, error } = await window.supabase
+        .from("analytics_top_queries")
+        .select("query, count")
+        .order("count", { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+
+      return data || [];
     } catch (error) {
       import("@/utils/logger").then((module) => {
         const logger = module.default;
@@ -530,8 +1143,28 @@ export const analyticsApi = {
     period: "day" | "week" | "month" = "week",
   ): Promise<{ model: string; count: number; percentage: number }[]> => {
     try {
-      const response = await api.get(`/analytics/model-usage?period=${period}`);
-      return response.data;
+      // Calculate date range based on period
+      const today = new Date();
+      let startDate = new Date(today);
+
+      if (period === "day") {
+        startDate.setDate(today.getDate() - 1);
+      } else if (period === "week") {
+        startDate.setDate(today.getDate() - 7);
+      } else if (period === "month") {
+        startDate.setMonth(today.getMonth() - 1);
+      }
+
+      const { data, error } = await window.supabase
+        .from("analytics_model_usage")
+        .select("model, count, percentage")
+        .gte("date", startDate.toISOString().split("T")[0])
+        .lte("date", today.toISOString().split("T")[0])
+        .order("count", { ascending: false });
+
+      if (error) throw error;
+
+      return data || [];
     } catch (error) {
       import("@/utils/logger").then((module) => {
         const logger = module.default;
@@ -545,6 +1178,112 @@ export const analyticsApi = {
         { model: "Gemini", count: 6248, percentage: 70 },
         { model: "Hugging Face", count: 2728, percentage: 30 },
       ];
+    }
+  },
+
+  // Generate and export reports
+  generateReport: async (
+    type: "csv" | "json",
+    period: "day" | "week" | "month" = "week",
+    metrics: string[] = [
+      "conversations",
+      "messages",
+      "responseTime",
+      "satisfaction",
+    ],
+  ): Promise<string> => {
+    try {
+      // Get the data for the report
+      const overview = await analyticsApi.getOverview(period);
+      const messagesByDay = await analyticsApi.getMessagesByDay(
+        period === "day" ? 1 : period === "week" ? 7 : 30,
+      );
+      const topQueries = await analyticsApi.getTopQueries(10);
+      const modelUsage = await analyticsApi.getModelUsage(period);
+
+      // Combine the data into a report object
+      const reportData: any = {
+        generatedAt: new Date().toISOString(),
+        period,
+        metrics: {},
+      };
+
+      if (metrics.includes("conversations")) {
+        reportData.metrics.totalConversations = overview.totalConversations;
+      }
+
+      if (metrics.includes("messages")) {
+        reportData.metrics.totalMessages = overview.totalMessages;
+        reportData.metrics.messagesByDay = messagesByDay;
+      }
+
+      if (metrics.includes("responseTime")) {
+        reportData.metrics.averageResponseTime = overview.averageResponseTime;
+      }
+
+      if (metrics.includes("satisfaction")) {
+        reportData.metrics.userSatisfactionRate = overview.userSatisfactionRate;
+      }
+
+      reportData.metrics.topQueries = topQueries;
+      reportData.metrics.modelUsage = modelUsage;
+
+      // Format the report based on the requested type
+      if (type === "json") {
+        return JSON.stringify(reportData, null, 2);
+      } else if (type === "csv") {
+        // Convert to CSV format
+        let csv = "Metric,Value\n";
+
+        if (metrics.includes("conversations")) {
+          csv += `Total Conversations,${overview.totalConversations}\n`;
+        }
+
+        if (metrics.includes("messages")) {
+          csv += `Total Messages,${overview.totalMessages}\n`;
+        }
+
+        if (metrics.includes("responseTime")) {
+          csv += `Average Response Time (s),${overview.averageResponseTime}\n`;
+        }
+
+        if (metrics.includes("satisfaction")) {
+          csv += `User Satisfaction Rate (%),${overview.userSatisfactionRate}\n`;
+        }
+
+        // Add messages by day
+        if (metrics.includes("messages")) {
+          csv += "\nMessages by Day\nDate,Count\n";
+          messagesByDay.forEach((item) => {
+            csv += `${item.date},${item.count}\n`;
+          });
+        }
+
+        // Add top queries
+        csv += "\nTop Queries\nQuery,Count\n";
+        topQueries.forEach((item) => {
+          csv += `"${item.query}",${item.count}\n`;
+        });
+
+        // Add model usage
+        csv += "\nModel Usage\nModel,Count,Percentage\n";
+        modelUsage.forEach((item) => {
+          csv += `${item.model},${item.count},${item.percentage}\n`;
+        });
+
+        return csv;
+      }
+
+      throw new Error(`Unsupported report type: ${type}`);
+    } catch (error) {
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error generating ${type} report for period ${period}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+      throw error;
     }
   },
 };
@@ -685,316 +1424,255 @@ export const widgetConfigApi = {
   },
 };
 
-// User Management API
-export const userManagementApi = {
-  getUsers: async ({
-    page = 1,
-    pageSize = 10,
-    searchTerm = "",
-    roleFilter = null,
-    statusFilter = null,
-  }: {
-    page?: number;
-    pageSize?: number;
-    searchTerm?: string;
-    roleFilter?: string | null;
-    statusFilter?: string | null;
-  }) => {
+// System Settings API
+export const systemSettingsApi = {
+  getSettings: async (
+    category: string,
+    environment: string = "production",
+  ): Promise<any> => {
     try {
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select("*", { count: "exact" });
+      const { data, error } = await window.supabase
+        .from("system_settings")
+        .select("settings")
+        .eq("category", category)
+        .eq("environment", environment)
+        .single();
 
-      if (userError) throw userError;
-
-      // Apply filters
-      let filteredUsers = [...(userData || [])];
-
-      if (searchTerm) {
-        filteredUsers = filteredUsers.filter(
-          (user) =>
-            user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (user.full_name &&
-              user.full_name.toLowerCase().includes(searchTerm.toLowerCase())),
+      if (error) throw error;
+      return data.settings;
+    } catch (error) {
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error fetching system settings for category ${category} and environment ${environment}`,
+          error instanceof Error ? error : new Error(String(error)),
         );
-      }
+      });
 
-      if (roleFilter) {
-        filteredUsers = filteredUsers.filter(
-          (user) => user.role === roleFilter,
-        );
-      }
-
-      if (statusFilter) {
-        filteredUsers = filteredUsers.filter((user) =>
-          statusFilter === "active" ? user.is_active : !user.is_active,
-        );
-      }
-
-      // Get total count and pages
-      const totalCount = filteredUsers.length;
-      const totalPages = Math.ceil(totalCount / pageSize);
-
-      // Apply pagination
-      const start = (page - 1) * pageSize;
-      const end = start + pageSize;
-      const paginatedUsers = filteredUsers.slice(start, end);
-
-      // Get user activity for each user
-      const usersWithActivity = await Promise.all(
-        paginatedUsers.map(async (user) => {
-          // Get last login
-          const { data: activityData } = await supabase
-            .from("user_activity")
-            .select("*")
-            .eq("user_id", user.id)
-            .eq("action", "login")
-            .order("created_at", { ascending: false })
-            .limit(1);
-
-          const lastLogin =
-            activityData && activityData.length > 0
-              ? activityData[0].created_at
-              : null;
-
+      // Return default settings based on category
+      switch (category) {
+        case "general":
           return {
-            id: user.id,
-            name: user.full_name || user.email.split("@")[0],
-            email: user.email,
-            role: user.role,
-            isActive: user.is_active,
-            avatar: user.avatar_url,
-            lastLogin,
-            createdAt: user.created_at,
+            siteName: "Context-Aware Chat System",
+            siteDescription: "Embeddable AI chat widget with context awareness",
+            supportEmail: "support@example.com",
+            logoUrl: "https://example.com/logo.png",
+            faviconUrl: "https://example.com/favicon.ico",
+            maintenanceMode: false,
+            defaultLanguage: "en",
+            timeZone: "UTC",
+            dateFormat: "MM/DD/YYYY",
+            timeFormat: "12h",
           };
-        }),
-      );
-
-      return {
-        users: usersWithActivity,
-        totalCount,
-        totalPages,
-      };
-    } catch (error) {
-      console.error("Error fetching users:", error);
-      throw error;
-    }
-  },
-
-  getUserById: async (id: string) => {
-    try {
-      const { data, error } = await supabase
-        .from("users")
-        .select("*")
-        .eq("id", id)
-        .single();
-
-      if (error) throw error;
-
-      return {
-        id: data.id,
-        name: data.full_name || data.email.split("@")[0],
-        email: data.email,
-        role: data.role,
-        isActive: data.is_active,
-        avatar: data.avatar_url,
-        createdAt: data.created_at,
-      };
-    } catch (error) {
-      console.error(`Error fetching user ${id}:`, error);
-      throw error;
-    }
-  },
-
-  createUser: async (userData: {
-    name: string;
-    email: string;
-    role: string;
-    isActive: boolean;
-    password?: string;
-  }) => {
-    try {
-      // First create auth user if password is provided
-      let authId = null;
-      if (userData.password) {
-        const { data: authData, error: authError } =
-          await supabase.auth.admin.createUser({
-            email: userData.email,
-            password: userData.password,
-            email_confirm: true,
-          });
-
-        if (authError) throw authError;
-        authId = authData.user.id;
+        case "security":
+          return {
+            enableMfa: false,
+            sessionTimeout: 60,
+            maxLoginAttempts: 5,
+            passwordPolicy: {
+              minLength: 8,
+              requireUppercase: true,
+              requireLowercase: true,
+              requireNumbers: true,
+              requireSpecialChars: true,
+              passwordExpiry: 90,
+            },
+            ipRestrictions: "",
+          };
+        case "email":
+          return {
+            smtpHost: "smtp.example.com",
+            smtpPort: 587,
+            smtpUsername: "smtp_user",
+            smtpPassword: "",
+            smtpSecure: true,
+            fromEmail: "no-reply@example.com",
+            fromName: "Chat System",
+          };
+        case "backup":
+          return {
+            enableAutomaticBackups: true,
+            backupFrequency: "daily",
+            backupTime: "02:00",
+            retentionPeriod: 30,
+            backupLocation: "local",
+            s3Bucket: "",
+            s3Region: "",
+            s3AccessKey: "",
+            s3SecretKey: "",
+          };
+        case "logging":
+          return {
+            logLevel: "info",
+            enableAuditLogs: true,
+            logRetention: 30,
+            enableErrorReporting: true,
+            errorReportingEmail: "",
+          };
+        default:
+          return {};
       }
+    }
+  },
 
-      // Then create user in our users table
-      const { data, error } = await supabase
-        .from("users")
-        .insert([
+  saveSettings: async (
+    category: string,
+    settings: any,
+    environment: string = "production",
+  ): Promise<void> => {
+    try {
+      // Check if settings for this category and environment already exist
+      const { data: existingData, error: fetchError } = await window.supabase
+        .from("system_settings")
+        .select("id, settings")
+        .eq("category", category)
+        .eq("environment", environment);
+
+      if (fetchError) throw fetchError;
+
+      if (existingData && existingData.length > 0) {
+        // Update existing settings
+        const { error } = await window.supabase
+          .from("system_settings")
+          .update({
+            settings,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingData[0].id);
+
+        if (error) throw error;
+
+        // Add to history
+        await window.supabase.from("system_settings_history").insert([
           {
-            email: userData.email,
-            full_name: userData.name,
-            role: userData.role,
-            is_active: userData.isActive,
-            auth_id: authId,
-            avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${userData.email}`,
+            settings_id: existingData[0].id,
+            settings: existingData[0].settings,
           },
-        ])
-        .select()
-        .single();
+        ]);
+      } else {
+        // Create new settings
+        const { data, error } = await window.supabase
+          .from("system_settings")
+          .insert([
+            {
+              category,
+              settings,
+              environment,
+            },
+          ])
+          .select()
+          .single();
 
-      if (error) throw error;
-
-      return {
-        id: data.id,
-        name: data.full_name || data.email.split("@")[0],
-        email: data.email,
-        role: data.role,
-        isActive: data.is_active,
-        avatar: data.avatar_url,
-        createdAt: data.created_at,
-      };
-    } catch (error) {
-      console.error("Error creating user:", error);
-      throw error;
-    }
-  },
-
-  updateUser: async (
-    id: string,
-    userData: {
-      name?: string;
-      email?: string;
-      role?: string;
-      isActive?: boolean;
-    },
-  ) => {
-    try {
-      const updateData: any = {};
-      if (userData.name !== undefined) updateData.full_name = userData.name;
-      if (userData.email !== undefined) updateData.email = userData.email;
-      if (userData.role !== undefined) updateData.role = userData.role;
-      if (userData.isActive !== undefined)
-        updateData.is_active = userData.isActive;
-      updateData.updated_at = new Date().toISOString();
-
-      const { data, error } = await supabase
-        .from("users")
-        .update(updateData)
-        .eq("id", id)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      return {
-        id: data.id,
-        name: data.full_name || data.email.split("@")[0],
-        email: data.email,
-        role: data.role,
-        isActive: data.is_active,
-        avatar: data.avatar_url,
-        createdAt: data.created_at,
-      };
-    } catch (error) {
-      console.error(`Error updating user ${id}:`, error);
-      throw error;
-    }
-  },
-
-  deleteUser: async (id: string) => {
-    try {
-      // First get the user to check if they have an auth_id
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select("auth_id")
-        .eq("id", id)
-        .single();
-
-      if (userError) throw userError;
-
-      // If the user has an auth_id, delete the auth user
-      if (userData?.auth_id) {
-        const { error: authError } = await supabase.auth.admin.deleteUser(
-          userData.auth_id,
-        );
-        if (authError) throw authError;
+        if (error) throw error;
       }
-
-      // Delete the user from our users table
-      const { error } = await supabase.from("users").delete().eq("id", id);
-
-      if (error) throw error;
-      return true;
     } catch (error) {
-      console.error(`Error deleting user ${id}:`, error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error saving system settings for category ${category} and environment ${environment}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       throw error;
     }
   },
 
-  getUserActivity: async (userId: string) => {
+  getSettingsHistory: async (
+    category: string,
+    environment: string = "production",
+  ): Promise<any[]> => {
     try {
-      const { data, error } = await supabase
-        .from("user_activity")
+      // First get the settings ID
+      const { data: settingsData, error: settingsError } = await window.supabase
+        .from("system_settings")
+        .select("id")
+        .eq("category", category)
+        .eq("environment", environment)
+        .single();
+
+      if (settingsError) throw settingsError;
+
+      // Then get the history for that settings ID
+      const { data, error } = await window.supabase
+        .from("system_settings_history")
         .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(20);
+        .eq("settings_id", settingsData.id)
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error(`Error fetching activity for user ${userId}:`, error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error fetching system settings history for category ${category} and environment ${environment}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       return [];
     }
   },
 
-  getUserSessions: async (userId: string) => {
+  getEnvironments: async (): Promise<string[]> => {
     try {
-      const { data, error } = await supabase
-        .from("user_sessions")
-        .select("*")
-        .eq("user_id", userId)
-        .order("last_active_at", { ascending: false });
+      const { data, error } = await window.supabase
+        .from("system_settings")
+        .select("environment")
+        .order("environment", { ascending: true });
 
       if (error) throw error;
-      return data || [];
+
+      // Extract unique environments
+      const environments = new Set<string>();
+      data?.forEach((item) => environments.add(item.environment));
+
+      return Array.from(environments);
     } catch (error) {
-      console.error(`Error fetching sessions for user ${userId}:`, error);
-      return [];
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          "Error fetching system environments",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+      return ["production", "development", "staging"];
     }
   },
 
-  logUserActivity: async ({
-    userId,
-    action,
-    ipAddress,
-    userAgent,
-    metadata = {},
-  }: {
-    userId: string;
-    action: string;
-    ipAddress?: string;
-    userAgent?: string;
-    metadata?: Record<string, any>;
-  }) => {
+  createEnvironment: async (environment: string): Promise<void> => {
     try {
-      const { error } = await supabase.from("user_activity").insert([
-        {
-          user_id: userId,
-          action,
-          ip_address: ipAddress,
-          user_agent: userAgent,
-          metadata,
-        },
-      ]);
+      // Get all categories from existing settings
+      const { data, error } = await window.supabase
+        .from("system_settings")
+        .select("category, settings")
+        .eq("environment", "production"); // Use production as template
 
       if (error) throw error;
-      return true;
+
+      // Create settings for each category in the new environment
+      const newSettings =
+        data?.map((item) => ({
+          category: item.category,
+          settings: item.settings,
+          environment,
+        })) || [];
+
+      if (newSettings.length > 0) {
+        const { error: insertError } = await window.supabase
+          .from("system_settings")
+          .insert(newSettings);
+
+        if (insertError) throw insertError;
+      }
     } catch (error) {
-      console.error("Error logging user activity:", error);
-      return false;
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error creating environment ${environment}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+      throw error;
     }
   },
 };
@@ -1007,4 +1685,5 @@ export default {
   analytics: analyticsApi,
   widgetConfig: widgetConfigApi,
   users: userManagementApi,
+  systemSettings: systemSettingsApi,
 };

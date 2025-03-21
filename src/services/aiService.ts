@@ -4,6 +4,8 @@ import { PromptTemplate } from "@/types/promptTemplates";
 import logger from "@/utils/logger";
 import knowledgeBaseService, { QueryResult } from "./knowledgeBaseService";
 import supabase from "./supabaseClient";
+import apiKeyService from "./apiKeyService";
+import aiCacheService from "./aiCacheService";
 
 // Define the AI model types
 type AIModel = "gemini" | "huggingface";
@@ -24,45 +26,54 @@ interface AIModelConfig {
   temperature?: number;
 }
 
-// Get environment variables for API keys and endpoints
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
-const HUGGINGFACE_API_KEY = import.meta.env.VITE_HUGGINGFACE_API_KEY as string;
-const GEMINI_ENDPOINT =
-  (import.meta.env.VITE_GEMINI_ENDPOINT as string) ||
-  "https://generativelanguage.googleapis.com";
-const HUGGINGFACE_ENDPOINT =
-  (import.meta.env.VITE_HUGGINGFACE_ENDPOINT as string) ||
-  "https://api-inference.huggingface.co/models";
+// Default endpoints for API services
+const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com";
+const HUGGINGFACE_ENDPOINT = "https://api-inference.huggingface.co/models";
 
-// Check if API keys are available and log warnings if not
-if (!GEMINI_API_KEY) {
-  console.warn(
-    "Gemini API key is missing. Set VITE_GEMINI_API_KEY in your environment variables.",
-  );
-}
-
-if (!HUGGINGFACE_API_KEY) {
-  console.warn(
-    "Hugging Face API key is missing. Set VITE_HUGGINGFACE_API_KEY in your environment variables.",
-  );
-}
-
-// Default model configurations
+// Default model configurations (API keys will be loaded dynamically)
 const modelConfigs: Record<AIModel, AIModelConfig> = {
   gemini: {
-    apiKey: GEMINI_API_KEY,
+    apiKey: "", // Will be loaded dynamically
     endpoint: GEMINI_ENDPOINT,
     version: "v1beta",
     maxTokens: 1024,
     temperature: 0.7,
   },
   huggingface: {
-    apiKey: HUGGINGFACE_API_KEY,
+    apiKey: "", // Will be loaded dynamically
     endpoint: HUGGINGFACE_ENDPOINT,
     maxTokens: 512,
     temperature: 0.8,
   },
 };
+
+// Initialize API keys
+async function initializeApiKeys() {
+  try {
+    // Load Gemini API key from secure storage
+    const geminiApiKey = await apiKeyService.getGeminiApiKey();
+    if (geminiApiKey) {
+      modelConfigs.gemini.apiKey = geminiApiKey;
+    } else {
+      logger.warn("Gemini API key not found in secure storage");
+    }
+
+    // Load Hugging Face API key (implementation similar to Gemini)
+    // For now, fallback to environment variable if available
+    const huggingFaceApiKey = import.meta.env
+      .VITE_HUGGINGFACE_API_KEY as string;
+    if (huggingFaceApiKey) {
+      modelConfigs.huggingface.apiKey = huggingFaceApiKey;
+    } else {
+      logger.warn("Hugging Face API key not found");
+    }
+  } catch (error) {
+    logger.error("Error initializing API keys", error);
+  }
+}
+
+// Call initialization
+initializeApiKeys();
 
 /**
  * Service for interacting with AI models
@@ -223,41 +234,143 @@ export const aiService = {
    * Generate a response using the Gemini API
    */
   generateGeminiResponse: async (prompt: string): Promise<AIModelResponse> => {
+    // Check if we have a cached response
+    const cachedResponse = await aiCacheService.getCachedResponse(prompt);
+    if (cachedResponse && cachedResponse.modelUsed === "gemini") {
+      logger.info("Using cached Gemini response");
+      return {
+        content: cachedResponse.response,
+        modelUsed: "gemini",
+        metadata: {
+          cached: true,
+          cachedAt: cachedResponse.createdAt,
+          ...cachedResponse.metadata,
+        },
+      };
+    }
+
+    // Check rate limits before making API call
+    const withinRateLimit = await apiKeyService.checkRateLimit("gemini");
+    if (!withinRateLimit) {
+      logger.warn("Rate limit exceeded for Gemini API");
+      throw new Error(
+        "Rate limit exceeded for Gemini API. Please try again later.",
+      );
+    }
+
+    // Ensure API key is loaded
+    if (!modelConfigs.gemini.apiKey) {
+      await initializeApiKeys();
+      if (!modelConfigs.gemini.apiKey) {
+        throw new Error("Gemini API key not configured");
+      }
+    }
+
     const config = modelConfigs.gemini;
     const url = `${config.endpoint}/${config.version}/models/gemini-pro:generateContent?key=${config.apiKey}`;
 
+    const startTime = Date.now();
+    let statusCode = 200;
+
     try {
-      const response = await axios.post(url, {
-        contents: [
-          {
-            parts: [
+      // Implement retry logic with exponential backoff
+      let retries = 0;
+      const maxRetries = 3;
+      let lastError: any = null;
+
+      while (retries <= maxRetries) {
+        try {
+          const response = await axios.post(url, {
+            contents: [
               {
-                text: prompt,
+                parts: [
+                  {
+                    text: prompt,
+                  },
+                ],
               },
             ],
-          },
-        ],
-        generationConfig: {
-          maxOutputTokens: config.maxTokens,
-          temperature: config.temperature,
-        },
-      });
+            generationConfig: {
+              maxOutputTokens: config.maxTokens,
+              temperature: config.temperature,
+            },
+          });
 
-      // Extract the response text from the Gemini API response
-      const content = response.data.candidates[0].content.parts[0].text;
+          // Extract the response text from the Gemini API response
+          const content = response.data.candidates[0].content.parts[0].text;
 
-      return {
-        content,
-        modelUsed: "gemini",
-        metadata: {
-          promptTokens: response.data.usage?.promptTokenCount || 0,
-          completionTokens: response.data.usage?.candidatesTokenCount || 0,
-          totalTokens: response.data.usage?.totalTokenCount || 0,
-        },
-      };
-    } catch (error) {
+          // Calculate response time for monitoring
+          const responseTime = Date.now() - startTime;
+
+          // Log API usage for monitoring
+          await apiKeyService.logApiKeyUsage(
+            "gemini",
+            "generateContent",
+            responseTime,
+            response.status,
+          );
+
+          // Cache the successful response
+          const metadata = {
+            promptTokens: response.data.usage?.promptTokenCount || 0,
+            completionTokens: response.data.usage?.candidatesTokenCount || 0,
+            totalTokens: response.data.usage?.totalTokenCount || 0,
+            responseTime,
+          };
+
+          await aiCacheService.cacheResponse(
+            prompt,
+            content,
+            "gemini",
+            metadata,
+            60, // Cache for 1 hour
+          );
+
+          return {
+            content,
+            modelUsed: "gemini",
+            metadata,
+          };
+        } catch (error: any) {
+          lastError = error;
+          statusCode = error.response?.status || 500;
+
+          // Only retry on specific error codes that are retryable
+          if (
+            error.response?.status === 429 ||
+            error.response?.status === 503
+          ) {
+            retries++;
+            if (retries <= maxRetries) {
+              // Exponential backoff: 1s, 2s, 4s
+              const backoffTime = Math.pow(2, retries - 1) * 1000;
+              logger.warn(
+                `Retrying Gemini API call in ${backoffTime}ms (${retries}/${maxRetries})`,
+              );
+              await new Promise((resolve) => setTimeout(resolve, backoffTime));
+              continue;
+            }
+          }
+          throw error;
+        }
+      }
+
+      throw lastError;
+    } catch (error: any) {
+      // Log the failed API call
+      const responseTime = Date.now() - startTime;
+      await apiKeyService.logApiKeyUsage(
+        "gemini",
+        "generateContent",
+        responseTime,
+        statusCode,
+      );
+
       logger.error("Error generating Gemini response", error);
-      throw new Error("Failed to generate response from Gemini");
+      throw new Error(
+        "Failed to generate response from Gemini: " +
+          (error.message || "Unknown error"),
+      );
     }
   },
 
@@ -267,6 +380,38 @@ export const aiService = {
   generateHuggingFaceResponse: async (
     prompt: string,
   ): Promise<AIModelResponse> => {
+    // Check if we have a cached response
+    const cachedResponse = await aiCacheService.getCachedResponse(prompt);
+    if (cachedResponse && cachedResponse.modelUsed === "huggingface") {
+      logger.info("Using cached Hugging Face response");
+      return {
+        content: cachedResponse.response,
+        modelUsed: "huggingface",
+        metadata: {
+          cached: true,
+          cachedAt: cachedResponse.createdAt,
+          ...cachedResponse.metadata,
+        },
+      };
+    }
+
+    // Check rate limits before making API call
+    const withinRateLimit = await apiKeyService.checkRateLimit("huggingface");
+    if (!withinRateLimit) {
+      logger.warn("Rate limit exceeded for Hugging Face API");
+      throw new Error(
+        "Rate limit exceeded for Hugging Face API. Please try again later.",
+      );
+    }
+
+    // Ensure API key is loaded
+    if (!modelConfigs.huggingface.apiKey) {
+      await initializeApiKeys();
+      if (!modelConfigs.huggingface.apiKey) {
+        throw new Error("Hugging Face API key not configured");
+      }
+    }
+
     const config = modelConfigs.huggingface;
     // Default to a good general model if not specified
     const model =
@@ -274,38 +419,108 @@ export const aiService = {
       "mistralai/Mistral-7B-Instruct-v0.2";
     const url = `${config.endpoint}/${model}`;
 
+    const startTime = Date.now();
+    let statusCode = 200;
+
     try {
-      const response = await axios.post(
-        url,
-        {
-          inputs: prompt,
-          parameters: {
-            max_new_tokens: config.maxTokens,
-            temperature: config.temperature,
-            return_full_text: false,
-          },
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${config.apiKey}`,
-            "Content-Type": "application/json",
-          },
-        },
+      // Implement retry logic with exponential backoff
+      let retries = 0;
+      const maxRetries = 3;
+      let lastError: any = null;
+
+      while (retries <= maxRetries) {
+        try {
+          const response = await axios.post(
+            url,
+            {
+              inputs: prompt,
+              parameters: {
+                max_new_tokens: config.maxTokens,
+                temperature: config.temperature,
+                return_full_text: false,
+              },
+            },
+            {
+              headers: {
+                Authorization: `Bearer ${config.apiKey}`,
+                "Content-Type": "application/json",
+              },
+            },
+          );
+
+          // Extract the response text from the Hugging Face API response
+          const content = response.data[0].generated_text;
+
+          // Calculate response time for monitoring
+          const responseTime = Date.now() - startTime;
+
+          // Log API usage for monitoring
+          await apiKeyService.logApiKeyUsage(
+            "huggingface",
+            model,
+            responseTime,
+            response.status,
+          );
+
+          // Cache the successful response
+          const metadata = {
+            model,
+            responseTime,
+          };
+
+          await aiCacheService.cacheResponse(
+            prompt,
+            content,
+            "huggingface",
+            metadata,
+            60, // Cache for 1 hour
+          );
+
+          return {
+            content,
+            modelUsed: "huggingface",
+            metadata,
+          };
+        } catch (error: any) {
+          lastError = error;
+          statusCode = error.response?.status || 500;
+
+          // Only retry on specific error codes that are retryable
+          if (
+            error.response?.status === 429 ||
+            error.response?.status === 503
+          ) {
+            retries++;
+            if (retries <= maxRetries) {
+              // Exponential backoff: 1s, 2s, 4s
+              const backoffTime = Math.pow(2, retries - 1) * 1000;
+              logger.warn(
+                `Retrying Hugging Face API call in ${backoffTime}ms (${retries}/${maxRetries})`,
+              );
+              await new Promise((resolve) => setTimeout(resolve, backoffTime));
+              continue;
+            }
+          }
+          throw error;
+        }
+      }
+
+      throw lastError;
+    } catch (error: any) {
+      // Log the failed API call
+      const responseTime = Date.now() - startTime;
+      await apiKeyService.logApiKeyUsage(
+        "huggingface",
+        model,
+        responseTime,
+        statusCode,
       );
 
-      // Extract the response text from the Hugging Face API response
-      const content = response.data[0].generated_text;
-
-      return {
-        content,
-        modelUsed: "huggingface",
-        metadata: {
-          model: model,
-        },
-      };
-    } catch (error) {
       logger.error("Error generating Hugging Face response", error);
-      throw new Error("Failed to generate response from Hugging Face");
+      throw new Error(
+        "Failed to generate response from Hugging Face: " +
+          (error.message || "Unknown error"),
+      );
     }
   },
 
