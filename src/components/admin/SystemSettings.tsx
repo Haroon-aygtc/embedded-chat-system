@@ -221,10 +221,10 @@ const SystemSettings = () => {
     try {
       // In a real implementation, this would save to your database
       console.log(`Saving ${type} settings:`, data);
-      
+
       // Simulate API call
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      
+
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
@@ -238,30 +238,30 @@ const SystemSettings = () => {
   const handleTestEmailConnection = async () => {
     // In a real implementation, this would test the SMTP connection
     console.log("Testing email connection...");
-    
+
     // Simulate API call
     await new Promise((resolve) => setTimeout(resolve, 1500));
-    
+
     alert("Email connection successful!");
   };
 
   const handleTestBackupConnection = async () => {
     // In a real implementation, this would test the backup connection
     console.log("Testing backup connection...");
-    
+
     // Simulate API call
     await new Promise((resolve) => setTimeout(resolve, 1500));
-    
+
     alert("Backup connection successful!");
   };
 
   const handleManualBackup = async () => {
     // In a real implementation, this would trigger a manual backup
     console.log("Triggering manual backup...");
-    
+
     // Simulate API call
     await new Promise((resolve) => setTimeout(resolve, 2000));
-    
+
     alert("Manual backup completed successfully!");
   };
 
@@ -554,7 +554,9 @@ const SystemSettings = () => {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="12h">12-hour (AM/PM)</SelectItem>
+                              <SelectItem value="12h">
+                                12-hour (AM/PM)
+                              </SelectItem>
                               <SelectItem value="24h">24-hour</SelectItem>
                             </SelectContent>
                           </Select>
@@ -1168,7 +1170,9 @@ const SystemSettings = () => {
 
                   {backupForm.watch("backupLocation") === "s3" && (
                     <div className="space-y-4 border rounded-md p-4">
-                      <h3 className="text-sm font-medium">Amazon S3 Settings</h3>
+                      <h3 className="text-sm font-medium">
+                        Amazon S3 Settings
+                      </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormField
                           control={backupForm.control}
@@ -1305,7 +1309,9 @@ const SystemSettings = () => {
                               Error (Minimal)
                             </SelectItem>
                             <SelectItem value="warn">Warning</SelectItem>
-                            <SelectItem value="info">Info (Standard)</SelectItem>
+                            <SelectItem value="info">
+                              Info (Standard)
+                            </SelectItem>
                             <SelectItem value="debug">
                               Debug (Verbose)
                             </SelectItem>
@@ -1415,22 +1421,62 @@ const SystemSettings = () => {
                   )}
 
                   <div className="rounded-md border p-4 bg-muted/50">
-                    <h3 className="text-sm font-medium mb-2">Current System Status</h3>
+                    <h3 className="text-sm font-medium mb-2">
+                      Current System Status
+                    </h3>
                     <div className="space-y-2">
                       <div className="flex justify-between items-center">
                         <span className="text-sm">Database Connection</span>
-                        <Badge variant="outline" className="bg-green-50 text-green-700">
+                        <Badge
+                          variant="outline"
+                          className="bg-green-50 text-green-700"
+                        >
                           Connected
                         </Badge>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-sm">Log Storage</span>
-                        <Badge variant="outline" className="bg-green-50 text-green-700">
+                        <Badge
+                          variant="outline"
+                          className="bg-green-50 text-green-700"
+                        >
                           85% Available
                         </Badge>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-sm">Last Error</span>
-                        <Badge variant="outline" className="bg-green-50 text-green-700">
+                        <Badge
+                          variant="outline"
+                          className="bg-green-50 text-green-700"
+                        >
                           None (24h)
                         </Badge>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button type="submit" disabled={isSaving}>
+                    {isSaving ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        Save Changes
+                      </>
+                    )}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Form>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+};
+
+export default SystemSettings;

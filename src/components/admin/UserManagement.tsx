@@ -133,81 +133,31 @@ const UserManagement = () => {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      // In a real implementation, this would fetch from your Supabase database
-      // For now, we'll use mock data
-      const mockUsers: User[] = [
-        {
-          id: "1",
-          name: "Admin User",
-          email: "admin@example.com",
-          role: "admin",
-          isActive: true,
-          avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=admin",
-          lastLogin: new Date().toISOString(),
-          createdAt: new Date(
-            Date.now() - 30 * 24 * 60 * 60 * 1000,
-          ).toISOString(),
-        },
-        {
-          id: "2",
-          name: "Editor User",
-          email: "editor@example.com",
-          role: "editor",
-          isActive: true,
-          avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=editor",
-          lastLogin: new Date(
-            Date.now() - 2 * 24 * 60 * 60 * 1000,
-          ).toISOString(),
-          createdAt: new Date(
-            Date.now() - 25 * 24 * 60 * 60 * 1000,
-          ).toISOString(),
-        },
-        {
-          id: "3",
-          name: "Viewer User",
-          email: "viewer@example.com",
-          role: "viewer",
-          isActive: true,
-          avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=viewer",
-          lastLogin: new Date(
-            Date.now() - 5 * 24 * 60 * 60 * 1000,
-          ).toISOString(),
-          createdAt: new Date(
-            Date.now() - 20 * 24 * 60 * 60 * 1000,
-          ).toISOString(),
-        },
-        {
-          id: "4",
-          name: "Regular User",
-          email: "user@example.com",
-          role: "user",
-          isActive: true,
-          avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=user",
-          lastLogin: new Date(
-            Date.now() - 1 * 24 * 60 * 60 * 1000,
-          ).toISOString(),
-          createdAt: new Date(
-            Date.now() - 15 * 24 * 60 * 60 * 1000,
-          ).toISOString(),
-        },
-        {
-          id: "5",
-          name: "Inactive User",
-          email: "inactive@example.com",
-          role: "user",
-          isActive: false,
-          avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=inactive",
-          lastLogin: new Date(
-            Date.now() - 60 * 24 * 60 * 60 * 1000,
-          ).toISOString(),
-          createdAt: new Date(
-            Date.now() - 10 * 24 * 60 * 60 * 1000,
-          ).toISOString(),
-        },
-      ];
+      // Fetch users from Supabase using our API service
+      const response = await supabase
+        .from("users")
+        .select("*", { count: "exact" });
+
+      if (response.error) {
+        throw response.error;
+      }
+
+      // Process the users data
+      const supabaseUsers = response.data.map((user) => ({
+        id: user.id,
+        name: user.full_name || user.email.split("@")[0],
+        email: user.email,
+        role: user.role,
+        isActive: user.is_active,
+        avatar:
+          user.avatar_url ||
+          `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`,
+        lastLogin: null, // We'll fetch this separately
+        createdAt: user.created_at,
+      }));
 
       // Apply filters
-      let filteredUsers = [...mockUsers];
+      let filteredUsers = [...supabaseUsers];
 
       if (searchTerm) {
         filteredUsers = filteredUsers.filter(
@@ -229,7 +179,43 @@ const UserManagement = () => {
         );
       }
 
-      setUsers(filteredUsers);
+      // Apply pagination
+      const start = (page - 1) * pageSize;
+      const end = start + pageSize;
+      const paginatedUsers = filteredUsers.slice(start, end);
+
+      // Fetch last login for each user
+      const usersWithActivity = await Promise.all(
+        paginatedUsers.map(async (user) => {
+          try {
+            // Get last login from user_activity table
+            const activityResponse = await supabase
+              .from("user_activity")
+              .select("*")
+              .eq("user_id", user.id)
+              .eq("action", "login")
+              .order("created_at", { ascending: false })
+              .limit(1);
+
+            if (!activityResponse.error && activityResponse.data.length > 0) {
+              return {
+                ...user,
+                lastLogin: activityResponse.data[0].created_at,
+              };
+            }
+
+            return user;
+          } catch (error) {
+            console.error(
+              `Error fetching activity for user ${user.id}:`,
+              error,
+            );
+            return user;
+          }
+        }),
+      );
+
+      setUsers(usersWithActivity);
       setTotalPages(Math.ceil(filteredUsers.length / pageSize));
     } catch (error) {
       console.error("Error fetching users:", error);
@@ -240,18 +226,71 @@ const UserManagement = () => {
 
   const handleCreateUser = async (data: UserFormValues) => {
     try {
-      // In a real implementation, this would create a user in your Supabase auth and database
-      console.log("Creating user:", data);
+      // Create user in Supabase
+      const { data: userData, error } = await supabase
+        .from("users")
+        .insert([
+          {
+            email: data.email,
+            full_name: data.name,
+            role: data.role,
+            is_active: data.isActive,
+            avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.email}`,
+          },
+        ])
+        .select()
+        .single();
 
-      // Mock implementation
+      if (error) throw error;
+
+      // If password is provided, create auth user
+      if (data.password) {
+        try {
+          const { error: authError } = await supabase.auth.admin.createUser({
+            email: data.email,
+            password: data.password,
+            email_confirm: true,
+          });
+
+          if (authError) {
+            console.error("Error creating auth user:", authError);
+            // Continue anyway as the database user was created
+          } else {
+            // Update the user with the auth_id
+            const { data: authData } = await supabase.auth.admin.getUserByEmail(
+              data.email,
+            );
+            if (authData?.user) {
+              await supabase
+                .from("users")
+                .update({ auth_id: authData.user.id })
+                .eq("id", userData.id);
+            }
+          }
+        } catch (authError) {
+          console.error("Error in auth user creation:", authError);
+          // Continue anyway as the database user was created
+        }
+      }
+
+      // Log the activity
+      await supabase.from("user_activity").insert([
+        {
+          user_id: userData.id,
+          action: "user_created",
+          metadata: { created_by: "admin" },
+        },
+      ]);
+
+      // Add the new user to the list
       const newUser: User = {
-        id: Date.now().toString(),
-        name: data.name,
-        email: data.email,
-        role: data.role,
-        isActive: data.isActive,
-        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.email}`,
-        createdAt: new Date().toISOString(),
+        id: userData.id,
+        name: userData.full_name || userData.email.split("@")[0],
+        email: userData.email,
+        role: userData.role,
+        isActive: userData.is_active,
+        avatar: userData.avatar_url,
+        createdAt: userData.created_at,
       };
 
       setUsers([...users, newUser]);
@@ -277,12 +316,42 @@ const UserManagement = () => {
     if (!selectedUser) return;
 
     try {
-      // In a real implementation, this would update a user in your Supabase database
-      console.log("Updating user:", { ...selectedUser, ...data });
+      // Update user in Supabase
+      const { data: userData, error } = await supabase
+        .from("users")
+        .update({
+          email: data.email,
+          full_name: data.name,
+          role: data.role,
+          is_active: data.isActive,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", selectedUser.id)
+        .select()
+        .single();
 
-      // Mock implementation
+      if (error) throw error;
+
+      // Log the activity
+      await supabase.from("user_activity").insert([
+        {
+          user_id: selectedUser.id,
+          action: "user_updated",
+          metadata: { updated_by: "admin" },
+        },
+      ]);
+
+      // Update the user in the list
       const updatedUsers = users.map((user) =>
-        user.id === selectedUser.id ? { ...user, ...data } : user,
+        user.id === selectedUser.id
+          ? {
+              ...user,
+              name: userData.full_name || userData.email.split("@")[0],
+              email: userData.email,
+              role: userData.role,
+              isActive: userData.is_active,
+            }
+          : user,
       );
 
       setUsers(updatedUsers);
@@ -303,10 +372,40 @@ const UserManagement = () => {
     if (!selectedUser) return;
 
     try {
-      // In a real implementation, this would delete a user from your Supabase database
-      console.log("Deleting user:", selectedUser);
+      // First check if user has an auth_id
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("auth_id")
+        .eq("id", selectedUser.id)
+        .single();
 
-      // Mock implementation
+      if (userError) throw userError;
+
+      // If user has an auth_id, delete the auth user
+      if (userData?.auth_id) {
+        try {
+          const { error: authError } = await supabase.auth.admin.deleteUser(
+            userData.auth_id,
+          );
+          if (authError) {
+            console.error("Error deleting auth user:", authError);
+            // Continue anyway to delete the database user
+          }
+        } catch (authError) {
+          console.error("Error in auth user deletion:", authError);
+          // Continue anyway to delete the database user
+        }
+      }
+
+      // Delete the user from the database
+      const { error } = await supabase
+        .from("users")
+        .delete()
+        .eq("id", selectedUser.id);
+
+      if (error) throw error;
+
+      // Update the UI
       const updatedUsers = users.filter((user) => user.id !== selectedUser.id);
       setUsers(updatedUsers);
       setIsDeleteDialogOpen(false);
@@ -316,54 +415,74 @@ const UserManagement = () => {
     }
   };
 
-  const handleViewActivity = (user: User) => {
+  const handleViewActivity = async (user: User) => {
     setSelectedUser(user);
-    // In a real implementation, this would fetch user activity from your database
-    // For now, we'll use mock data
-    const mockActivity = [
-      {
-        id: "1",
-        action: "Login",
-        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-        ipAddress: "192.168.1.1",
-        userAgent:
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-      {
-        id: "2",
-        action: "Updated profile",
-        timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-        ipAddress: "192.168.1.1",
-        userAgent:
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-      {
-        id: "3",
-        action: "Created context rule",
-        timestamp: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-        ipAddress: "192.168.1.1",
-        userAgent:
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-      {
-        id: "4",
-        action: "Login",
-        timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-        ipAddress: "192.168.1.2",
-        userAgent:
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-      },
-      {
-        id: "5",
-        action: "Password reset",
-        timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-        ipAddress: "192.168.1.2",
-        userAgent:
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-      },
-    ];
-    setUserActivity(mockActivity);
-    setIsActivityDialogOpen(true);
+    setLoading(true);
+
+    try {
+      // Fetch user activity from Supabase
+      const { data: activityData, error: activityError } = await supabase
+        .from("user_activity")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (activityError) throw activityError;
+
+      // Fetch user sessions
+      const { data: sessionData, error: sessionError } = await supabase
+        .from("user_sessions")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("last_active_at", { ascending: false })
+        .limit(5);
+
+      if (sessionError) throw sessionError;
+
+      // Format the activity data
+      const formattedActivity =
+        activityData?.map((activity) => ({
+          id: activity.id,
+          action: activity.action,
+          timestamp: activity.created_at,
+          ipAddress: activity.ip_address || "Unknown",
+          userAgent: activity.user_agent || "Unknown",
+          metadata: activity.metadata,
+        })) || [];
+
+      // If no activity data is found, use some default entries
+      if (formattedActivity.length === 0) {
+        formattedActivity.push({
+          id: "1",
+          action: "Account created",
+          timestamp: user.createdAt || new Date().toISOString(),
+          ipAddress: "Unknown",
+          userAgent: "Unknown",
+        });
+      }
+
+      setUserActivity(formattedActivity);
+      setIsActivityDialogOpen(true);
+    } catch (error) {
+      console.error(`Error fetching activity for user ${user.id}:`, error);
+
+      // Fallback to basic activity if there's an error
+      const fallbackActivity = [
+        {
+          id: "1",
+          action: "Account created",
+          timestamp: user.createdAt || new Date().toISOString(),
+          ipAddress: "Unknown",
+          userAgent: "Unknown",
+        },
+      ];
+
+      setUserActivity(fallbackActivity);
+      setIsActivityDialogOpen(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleExportUsers = () => {

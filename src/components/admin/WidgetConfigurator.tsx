@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -47,7 +47,13 @@ import {
   Maximize2,
   X,
   Send,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle,
 } from "lucide-react";
+import { widgetConfigApi } from "@/services/apiService";
+import { useToast } from "@/components/ui/use-toast";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 // Define the form schema using zod
 const formSchema = z.object({
@@ -89,10 +95,19 @@ type FormValues = z.infer<typeof formSchema>;
 
 const WidgetConfigurator = ({
   defaultValues = {},
+  userId = "current-user", // In a real app, this would come from auth context
 }: {
   defaultValues?: Partial<FormValues>;
+  userId?: string;
 }) => {
   const [activeTab, setActiveTab] = useState("appearance");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [configId, setConfigId] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">(
+    "idle",
+  );
+  const { toast } = useToast();
 
   // Initialize form with default values
   const form = useForm<FormValues>({
@@ -105,9 +120,78 @@ const WidgetConfigurator = ({
 
   const watchedValues = form.watch();
 
-  const onSubmit = (data: FormValues) => {
-    console.log("Form submitted:", data);
-    // Here you would save the configuration to your backend
+  // Fetch existing configuration on component mount
+  useEffect(() => {
+    const fetchWidgetConfig = async () => {
+      setIsLoading(true);
+      try {
+        const config = await widgetConfigApi.getByUserId(userId);
+        if (config) {
+          // Update form with fetched configuration
+          form.reset(config.settings);
+          setConfigId(config.id);
+        }
+      } catch (error) {
+        console.error("Error fetching widget configuration:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load widget configuration",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchWidgetConfig();
+  }, [userId, form, toast]);
+
+  const onSubmit = async (data: FormValues) => {
+    setIsSaving(true);
+    setSaveStatus("idle");
+
+    try {
+      let result;
+
+      if (configId) {
+        // Update existing configuration
+        result = await widgetConfigApi.update(configId, {
+          settings: data,
+          updated_at: new Date().toISOString(),
+        });
+      } else {
+        // Create new configuration
+        result = await widgetConfigApi.create({
+          user_id: userId,
+          settings: data,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      }
+
+      if (result) {
+        setConfigId(result.id);
+        setSaveStatus("success");
+        toast({
+          title: "Success",
+          description: "Widget configuration saved successfully",
+        });
+      } else {
+        throw new Error("Failed to save configuration");
+      }
+    } catch (error) {
+      console.error("Error saving widget configuration:", error);
+      setSaveStatus("error");
+      toast({
+        title: "Error",
+        description: "Failed to save widget configuration",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+      // Reset status after 3 seconds
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    }
   };
 
   const generateEmbedCode = () => {
@@ -588,15 +672,45 @@ const WidgetConfigurator = ({
                 </Card>
               </TabsContent>
 
+              {saveStatus === "success" && (
+                <Alert className="mb-4 bg-green-50 border-green-200">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <AlertTitle className="text-green-800">Success</AlertTitle>
+                  <AlertDescription className="text-green-700">
+                    Widget configuration saved successfully.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {saveStatus === "error" && (
+                <Alert variant="destructive" className="mb-4">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Error</AlertTitle>
+                  <AlertDescription>
+                    Failed to save widget configuration. Please try again.
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <div className="flex justify-end gap-4">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => form.reset()}
+                  disabled={isLoading || isSaving}
                 >
                   Reset
                 </Button>
-                <Button type="submit">Save Configuration</Button>
+                <Button type="submit" disabled={isLoading || isSaving}>
+                  {isSaving ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save Configuration"
+                  )}
+                </Button>
               </div>
             </form>
           </Form>

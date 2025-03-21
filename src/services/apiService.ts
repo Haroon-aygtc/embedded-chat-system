@@ -549,10 +549,462 @@ export const analyticsApi = {
   },
 };
 
+// Widget Configuration API
+export const widgetConfigApi = {
+  getAll: async (): Promise<any[]> => {
+    try {
+      const { data, error } = await window.supabase
+        .from("widget_configs")
+        .select("*");
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          "Error fetching widget configurations",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+      // Return empty array on error
+      return [];
+    }
+  },
+
+  getByUserId: async (userId: string): Promise<any | null> => {
+    try {
+      const { data, error } = await window.supabase
+        .from("widget_configs")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error && error.code !== "PGRST116") throw error; // PGRST116 is the error code for no rows returned
+      return data;
+    } catch (error) {
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error fetching widget configuration for user ${userId}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+      return null;
+    }
+  },
+
+  getById: async (id: string): Promise<any | null> => {
+    try {
+      const { data, error } = await window.supabase
+        .from("widget_configs")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error fetching widget configuration with id ${id}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+      return null;
+    }
+  },
+
+  create: async (config: any): Promise<any | null> => {
+    try {
+      const { data, error } = await window.supabase
+        .from("widget_configs")
+        .insert([config])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          "Error creating widget configuration",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+      return null;
+    }
+  },
+
+  update: async (id: string, config: any): Promise<any | null> => {
+    try {
+      const { data, error } = await window.supabase
+        .from("widget_configs")
+        .update(config)
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error updating widget configuration with id ${id}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+      return null;
+    }
+  },
+
+  delete: async (id: string): Promise<boolean> => {
+    try {
+      const { error } = await window.supabase
+        .from("widget_configs")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error deleting widget configuration with id ${id}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+      return false;
+    }
+  },
+};
+
+// User Management API
+export const userManagementApi = {
+  getUsers: async ({
+    page = 1,
+    pageSize = 10,
+    searchTerm = "",
+    roleFilter = null,
+    statusFilter = null,
+  }: {
+    page?: number;
+    pageSize?: number;
+    searchTerm?: string;
+    roleFilter?: string | null;
+    statusFilter?: string | null;
+  }) => {
+    try {
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("*", { count: "exact" });
+
+      if (userError) throw userError;
+
+      // Apply filters
+      let filteredUsers = [...(userData || [])];
+
+      if (searchTerm) {
+        filteredUsers = filteredUsers.filter(
+          (user) =>
+            user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (user.full_name &&
+              user.full_name.toLowerCase().includes(searchTerm.toLowerCase())),
+        );
+      }
+
+      if (roleFilter) {
+        filteredUsers = filteredUsers.filter(
+          (user) => user.role === roleFilter,
+        );
+      }
+
+      if (statusFilter) {
+        filteredUsers = filteredUsers.filter((user) =>
+          statusFilter === "active" ? user.is_active : !user.is_active,
+        );
+      }
+
+      // Get total count and pages
+      const totalCount = filteredUsers.length;
+      const totalPages = Math.ceil(totalCount / pageSize);
+
+      // Apply pagination
+      const start = (page - 1) * pageSize;
+      const end = start + pageSize;
+      const paginatedUsers = filteredUsers.slice(start, end);
+
+      // Get user activity for each user
+      const usersWithActivity = await Promise.all(
+        paginatedUsers.map(async (user) => {
+          // Get last login
+          const { data: activityData } = await supabase
+            .from("user_activity")
+            .select("*")
+            .eq("user_id", user.id)
+            .eq("action", "login")
+            .order("created_at", { ascending: false })
+            .limit(1);
+
+          const lastLogin =
+            activityData && activityData.length > 0
+              ? activityData[0].created_at
+              : null;
+
+          return {
+            id: user.id,
+            name: user.full_name || user.email.split("@")[0],
+            email: user.email,
+            role: user.role,
+            isActive: user.is_active,
+            avatar: user.avatar_url,
+            lastLogin,
+            createdAt: user.created_at,
+          };
+        }),
+      );
+
+      return {
+        users: usersWithActivity,
+        totalCount,
+        totalPages,
+      };
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      throw error;
+    }
+  },
+
+  getUserById: async (id: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (error) throw error;
+
+      return {
+        id: data.id,
+        name: data.full_name || data.email.split("@")[0],
+        email: data.email,
+        role: data.role,
+        isActive: data.is_active,
+        avatar: data.avatar_url,
+        createdAt: data.created_at,
+      };
+    } catch (error) {
+      console.error(`Error fetching user ${id}:`, error);
+      throw error;
+    }
+  },
+
+  createUser: async (userData: {
+    name: string;
+    email: string;
+    role: string;
+    isActive: boolean;
+    password?: string;
+  }) => {
+    try {
+      // First create auth user if password is provided
+      let authId = null;
+      if (userData.password) {
+        const { data: authData, error: authError } =
+          await supabase.auth.admin.createUser({
+            email: userData.email,
+            password: userData.password,
+            email_confirm: true,
+          });
+
+        if (authError) throw authError;
+        authId = authData.user.id;
+      }
+
+      // Then create user in our users table
+      const { data, error } = await supabase
+        .from("users")
+        .insert([
+          {
+            email: userData.email,
+            full_name: userData.name,
+            role: userData.role,
+            is_active: userData.isActive,
+            auth_id: authId,
+            avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${userData.email}`,
+          },
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return {
+        id: data.id,
+        name: data.full_name || data.email.split("@")[0],
+        email: data.email,
+        role: data.role,
+        isActive: data.is_active,
+        avatar: data.avatar_url,
+        createdAt: data.created_at,
+      };
+    } catch (error) {
+      console.error("Error creating user:", error);
+      throw error;
+    }
+  },
+
+  updateUser: async (
+    id: string,
+    userData: {
+      name?: string;
+      email?: string;
+      role?: string;
+      isActive?: boolean;
+    },
+  ) => {
+    try {
+      const updateData: any = {};
+      if (userData.name !== undefined) updateData.full_name = userData.name;
+      if (userData.email !== undefined) updateData.email = userData.email;
+      if (userData.role !== undefined) updateData.role = userData.role;
+      if (userData.isActive !== undefined)
+        updateData.is_active = userData.isActive;
+      updateData.updated_at = new Date().toISOString();
+
+      const { data, error } = await supabase
+        .from("users")
+        .update(updateData)
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return {
+        id: data.id,
+        name: data.full_name || data.email.split("@")[0],
+        email: data.email,
+        role: data.role,
+        isActive: data.is_active,
+        avatar: data.avatar_url,
+        createdAt: data.created_at,
+      };
+    } catch (error) {
+      console.error(`Error updating user ${id}:`, error);
+      throw error;
+    }
+  },
+
+  deleteUser: async (id: string) => {
+    try {
+      // First get the user to check if they have an auth_id
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("auth_id")
+        .eq("id", id)
+        .single();
+
+      if (userError) throw userError;
+
+      // If the user has an auth_id, delete the auth user
+      if (userData?.auth_id) {
+        const { error: authError } = await supabase.auth.admin.deleteUser(
+          userData.auth_id,
+        );
+        if (authError) throw authError;
+      }
+
+      // Delete the user from our users table
+      const { error } = await supabase.from("users").delete().eq("id", id);
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error(`Error deleting user ${id}:`, error);
+      throw error;
+    }
+  },
+
+  getUserActivity: async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("user_activity")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error(`Error fetching activity for user ${userId}:`, error);
+      return [];
+    }
+  },
+
+  getUserSessions: async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("user_sessions")
+        .select("*")
+        .eq("user_id", userId)
+        .order("last_active_at", { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error(`Error fetching sessions for user ${userId}:`, error);
+      return [];
+    }
+  },
+
+  logUserActivity: async ({
+    userId,
+    action,
+    ipAddress,
+    userAgent,
+    metadata = {},
+  }: {
+    userId: string;
+    action: string;
+    ipAddress?: string;
+    userAgent?: string;
+    metadata?: Record<string, any>;
+  }) => {
+    try {
+      const { error } = await supabase.from("user_activity").insert([
+        {
+          user_id: userId,
+          action,
+          ip_address: ipAddress,
+          user_agent: userAgent,
+          metadata,
+        },
+      ]);
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error("Error logging user activity:", error);
+      return false;
+    }
+  },
+};
+
 // Export a default object with all APIs
 export default {
   contextRules: contextRulesApi,
   promptTemplates: promptTemplatesApi,
   chat: chatApi,
   analytics: analyticsApi,
+  widgetConfig: widgetConfigApi,
+  users: userManagementApi,
 };

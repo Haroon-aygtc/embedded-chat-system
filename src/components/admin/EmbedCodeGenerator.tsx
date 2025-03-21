@@ -1,23 +1,35 @@
 import React, { useState } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Copy, Check, Code2, Globe } from "lucide-react";
-import { contextRulesApi } from "@/services/apiService";
+import {
+  Copy,
+  Check,
+  Code2,
+  Globe,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react";
+import { contextRulesApi, widgetConfigApi } from "@/services/apiService";
 import { useEffect } from "react";
 import { ContextRule } from "@/types/contextRules";
+import { useRealtime } from "@/hooks/useRealtime";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useToast } from "@/components/ui/use-toast";
 
 interface EmbedCodeGeneratorProps {
   widgetId?: string;
   widgetColor?: string;
   widgetPosition?: "bottom-right" | "bottom-left" | "top-right" | "top-left";
   widgetSize?: "small" | "medium" | "large";
+  userId?: string;
 }
 
 const EmbedCodeGenerator = ({
-  widgetId = "chat-widget-123",
-  widgetColor = "#4f46e5",
-  widgetPosition = "bottom-right",
-  widgetSize = "medium",
+  widgetId: initialWidgetId = "chat-widget-123",
+  widgetColor: initialWidgetColor = "#4f46e5",
+  widgetPosition: initialWidgetPosition = "bottom-right",
+  widgetSize: initialWidgetSize = "medium",
+  userId = "current-user", // In a real app, this would come from auth context
 }: EmbedCodeGeneratorProps) => {
   const [copied, setCopied] = useState<string | null>(null);
   const [contextRules, setContextRules] = useState<ContextRule[]>([]);
@@ -26,23 +38,94 @@ const EmbedCodeGenerator = ({
   const [contextMode, setContextMode] = useState<"general" | "business">(
     "general",
   );
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [widgetId, setWidgetId] = useState(initialWidgetId);
+  const [widgetColor, setWidgetColor] = useState(initialWidgetColor);
+  const [widgetPosition, setWidgetPosition] = useState(initialWidgetPosition);
+  const [widgetSize, setWidgetSize] = useState(initialWidgetSize);
+  const [configId, setConfigId] = useState<string | null>(null);
+  const { toast } = useToast();
 
-  // Fetch available context rules
+  // Subscribe to real-time changes in widget_configs table
+  const { data: realtimeConfig } = useRealtime<any>(
+    "widget_configs",
+    ["UPDATE"],
+    `user_id=eq.${userId}`,
+    true,
+  );
+
+  // Fetch available context rules and widget configuration
   useEffect(() => {
-    const fetchContextRules = async () => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      setError(null);
+
       try {
+        // Fetch context rules
         const rules = await contextRulesApi.getAll();
         setContextRules(rules.filter((rule) => rule.isActive));
         if (rules.length > 0) {
           setSelectedContextRuleId(rules[0].id);
         }
+
+        // Fetch widget configuration
+        const config = await widgetConfigApi.getByUserId(userId);
+        if (config) {
+          setConfigId(config.id);
+
+          // Update state with configuration values if available
+          if (config.settings) {
+            const settings = config.settings;
+            if (settings.primaryColor) setWidgetColor(settings.primaryColor);
+            if (settings.position) setWidgetPosition(settings.position);
+
+            // Map widget size based on chatIconSize
+            if (settings.chatIconSize) {
+              if (settings.chatIconSize <= 30) setWidgetSize("small");
+              else if (settings.chatIconSize >= 50) setWidgetSize("large");
+              else setWidgetSize("medium");
+            }
+          }
+        }
       } catch (error) {
-        console.error("Failed to fetch context rules:", error);
+        console.error("Failed to fetch data:", error);
+        setError("Failed to load configuration data. Please try again.");
+        toast({
+          title: "Error",
+          description: "Failed to load configuration data",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    fetchContextRules();
-  }, []);
+    fetchData();
+  }, [userId, toast]);
+
+  // Update widget configuration when real-time changes occur
+  useEffect(() => {
+    if (realtimeConfig && realtimeConfig.settings) {
+      const settings = realtimeConfig.settings;
+
+      // Update state with new configuration values
+      if (settings.primaryColor) setWidgetColor(settings.primaryColor);
+      if (settings.position) setWidgetPosition(settings.position);
+
+      // Map widget size based on chatIconSize
+      if (settings.chatIconSize) {
+        if (settings.chatIconSize <= 30) setWidgetSize("small");
+        else if (settings.chatIconSize >= 50) setWidgetSize("large");
+        else setWidgetSize("medium");
+      }
+
+      toast({
+        title: "Configuration Updated",
+        description: "Widget configuration has been updated",
+      });
+    }
+  }, [realtimeConfig, toast]);
 
   const baseUrl = window.location.origin;
 
@@ -91,6 +174,20 @@ const EmbedCodeGenerator = ({
 
   return (
     <div className="w-full p-6 bg-white rounded-lg shadow-sm border border-gray-200">
+      {isLoading && (
+        <div className="flex items-center justify-center p-4 mb-4 bg-blue-50 rounded-md">
+          <RefreshCw className="h-5 w-5 text-blue-500 animate-spin mr-2" />
+          <p className="text-blue-700">Loading configuration data...</p>
+        </div>
+      )}
+
+      {error && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900 mb-2">
           Embed Code Generator

@@ -541,6 +541,91 @@ export type Database = {
         }
         Relationships: []
       }
+      user_activity: {
+        Row: {
+          action: string
+          created_at: string | null
+          id: string
+          ip_address: string | null
+          metadata: Json | null
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_activity_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_sessions: {
+        Row: {
+          browser_info: string | null
+          created_at: string | null
+          device_info: string | null
+          expires_at: string | null
+          id: string
+          ip_address: string | null
+          is_active: boolean | null
+          last_active_at: string | null
+          session_id: string
+          user_id: string
+        }
+        Insert: {
+          browser_info?: string | null
+          created_at?: string | null
+          device_info?: string | null
+          expires_at?: string | null
+          id?: string
+          ip_address?: string | null
+          is_active?: boolean | null
+          last_active_at?: string | null
+          session_id: string
+          user_id: string
+        }
+        Update: {
+          browser_info?: string | null
+          created_at?: string | null
+          device_info?: string | null
+          expires_at?: string | null
+          id?: string
+          ip_address?: string | null
+          is_active?: boolean | null
+          last_active_at?: string | null
+          session_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_subscriptions: {
         Row: {
           cancel_at_period_end: boolean
@@ -637,6 +722,30 @@ export type Database = {
           metadata?: Json | null
           role?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      widget_configs: {
+        Row: {
+          created_at: string
+          id: string
+          settings: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          settings?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          settings?: Json
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
