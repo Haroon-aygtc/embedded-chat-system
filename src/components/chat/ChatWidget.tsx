@@ -6,7 +6,8 @@ import ChatInput from "./ChatInput";
 import TypingIndicator from "./TypingIndicator";
 import { MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Message } from "@/types/chat";
+import { Message, WebSocketMessage } from "@/types/chat";
+import websocketService from "@/services/websocketService";
 
 interface ChatWidgetProps {
   title?: string;
@@ -45,8 +46,51 @@ const ChatWidget = ({
   const [isAssistantTyping, setIsAssistantTyping] = useState(false);
   const constraintsRef = useRef(null);
 
-  // Initialize with welcome message
+  // Initialize WebSocket connection and welcome message
   useEffect(() => {
+    // Connect to WebSocket
+    if (!websocketService.isConnected()) {
+      websocketService.connect();
+    }
+
+    // Set up message handler
+    const unsubscribe = websocketService.onMessage((data: WebSocketMessage) => {
+      if (data.type === "message" && data.payload) {
+        const assistantMessage: Message = {
+          id: data.payload.id || Date.now().toString(),
+          content: data.payload.content,
+          sender: "assistant",
+          timestamp: new Date(data.timestamp),
+          status: "sent",
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+        setIsAssistantTyping(false);
+      } else if (data.type === "typing") {
+        setIsAssistantTyping(data.payload.isTyping);
+      } else if (data.type === "history" && Array.isArray(data.payload)) {
+        // Handle message history
+        const historyMessages = data.payload.map((msg: any) => ({
+          id: msg.id,
+          content: msg.content,
+          sender: msg.sender,
+          timestamp: new Date(msg.timestamp),
+          status: "sent",
+        }));
+        setMessages(historyMessages);
+      }
+    });
+
+    // Set up connection handler
+    const connectionHandler = websocketService.onConnect(() => {
+      // Request chat history when connected
+      websocketService.sendMessage({
+        type: "history_request",
+        payload: {},
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // Initialize with welcome message if no history is loaded
     const initialMessages: Message[] = [
       {
         id: "1",
@@ -57,6 +101,12 @@ const ChatWidget = ({
       },
     ];
     setMessages(initialMessages);
+
+    // Clean up on unmount
+    return () => {
+      unsubscribe();
+      connectionHandler();
+    };
   }, [contextMode, contextName]);
 
   const handleSendMessage = async (content: string) => {
@@ -77,7 +127,6 @@ const ChatWidget = ({
 
     // Show loading state
     setIsLoading(true);
-    setIsAssistantTyping(true);
 
     try {
       // Call the provided onSendMessage function if provided
@@ -85,27 +134,46 @@ const ChatWidget = ({
         await onSendMessage(content);
       }
 
-      // Update message status to sent
+      // Send message via WebSocket
+      const messageSent = websocketService.sendMessage({
+        type: "message",
+        payload: {
+          id: messageId,
+          content,
+          contextMode,
+          contextName,
+        },
+        timestamp: new Date().toISOString(),
+      });
+
+      // Update message status based on whether it was sent successfully
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.id === messageId ? { ...msg, status: "sent" } : msg,
+          msg.id === messageId
+            ? { ...msg, status: messageSent ? "sent" : "error" }
+            : msg,
         ),
       );
 
-      // Simulate response after a delay
-      setTimeout(() => {
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          content: getSimulatedResponse(content, contextMode, contextName),
-          sender: "assistant",
-          timestamp: new Date(),
-          status: "sent",
-        };
+      // If WebSocket is not connected, fall back to simulated response
+      if (!messageSent) {
+        console.warn(
+          "WebSocket not connected, falling back to simulated response",
+        );
+        setTimeout(() => {
+          const assistantMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: getSimulatedResponse(content, contextMode, contextName),
+            sender: "assistant",
+            timestamp: new Date(),
+            status: "sent",
+          };
 
-        setMessages((prev) => [...prev, assistantMessage]);
-        setIsLoading(false);
-        setIsAssistantTyping(false);
-      }, 1500);
+          setMessages((prev) => [...prev, assistantMessage]);
+          setIsLoading(false);
+          setIsAssistantTyping(false);
+        }, 1500);
+      }
     } catch (error) {
       console.error("Error sending message:", error);
       setIsLoading(false);
