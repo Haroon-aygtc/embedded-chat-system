@@ -142,7 +142,13 @@ const ContextRulesEditor = () => {
         setRules(data);
         setError(null);
       } catch (error) {
-        console.error("Error fetching context rules:", error);
+        import("@/utils/logger").then((module) => {
+          const logger = module.default;
+          logger.error(
+            "Error fetching context rules",
+            error instanceof Error ? error : new Error(String(error)),
+          );
+        });
         setError("Failed to load context rules. Please try again.");
       } finally {
         setIsLoading(false);
@@ -163,7 +169,13 @@ const ContextRulesEditor = () => {
       reset();
       setError(null);
     } catch (error) {
-      console.error("Error creating context rule:", error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          "Error creating context rule",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       setError("Failed to create context rule. Please try again.");
     } finally {
       setIsSaving(false);
@@ -187,7 +199,13 @@ const ContextRulesEditor = () => {
       reset();
       setError(null);
     } catch (error) {
-      console.error("Error updating context rule:", error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          "Error updating context rule",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       setError("Failed to update context rule. Please try again.");
     } finally {
       setIsSaving(false);
@@ -203,7 +221,13 @@ const ContextRulesEditor = () => {
       setRules(rules.filter((rule) => rule.id !== id));
       setError(null);
     } catch (error) {
-      console.error("Error deleting context rule:", error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          "Error deleting context rule",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       setError("Failed to delete context rule. Please try again.");
     } finally {
       setIsLoading(false);
@@ -277,7 +301,13 @@ const ContextRulesEditor = () => {
       const result = await contextRulesApi.testRule(selectedRule.id, testQuery);
       setTestResult(result);
     } catch (error) {
-      console.error("Error testing context rule:", error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          "Error testing context rule",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       setError("Failed to test context rule. Please try again.");
     } finally {
       setIsTestingRule(false);

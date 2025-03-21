@@ -129,8 +129,8 @@ const DashboardHeader = ({
             <DropdownMenuItem
               className="cursor-pointer text-red-600"
               onClick={() => {
-                const { logout } = useAuth();
-                logout();
+                const auth = useAuth();
+                auth.logout();
                 window.location.href = "/login";
               }}
             >

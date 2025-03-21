@@ -284,8 +284,8 @@ const Sidebar = ({
             collapsed && "justify-center px-2",
           )}
           onClick={() => {
-            const { logout } = useAuth();
-            logout();
+            const auth = useAuth();
+            auth.logout();
             window.location.href = "/login";
           }}
         >

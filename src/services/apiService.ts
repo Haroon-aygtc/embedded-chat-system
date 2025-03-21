@@ -9,7 +9,13 @@ export const contextRulesApi = {
       const response = await api.get("/context-rules");
       return response.data;
     } catch (error) {
-      console.error("Error fetching context rules:", error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          "Error fetching context rules",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       // Fallback to local data if API is not available
       return [
         {
@@ -62,7 +68,13 @@ export const contextRulesApi = {
       const response = await api.get(`/context-rules/${id}`);
       return response.data;
     } catch (error) {
-      console.error(`Error fetching context rule ${id}:`, error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error fetching context rule ${id}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       // Fallback to local data
       const rules = await contextRulesApi.getAll();
       const rule = rules.find((r) => r.id === id);
@@ -82,7 +94,13 @@ export const contextRulesApi = {
       const response = await api.post("/context-rules", rule);
       return response.data;
     } catch (error) {
-      console.error("Error creating context rule:", error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          "Error creating context rule",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       // Fallback for demo purposes
       const newRule: ContextRule = {
         ...rule,
@@ -102,7 +120,13 @@ export const contextRulesApi = {
       const response = await api.put(`/context-rules/${id}`, rule);
       return response.data;
     } catch (error) {
-      console.error(`Error updating context rule ${id}:`, error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error updating context rule ${id}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       // Fallback for demo purposes
       const existingRule = await contextRulesApi.getById(id);
       const updatedRule: ContextRule = {
@@ -118,7 +142,13 @@ export const contextRulesApi = {
     try {
       await api.delete(`/context-rules/${id}`);
     } catch (error) {
-      console.error(`Error deleting context rule ${id}:`, error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error deleting context rule ${id}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       // Silently fail for demo purposes
     }
   },
@@ -133,7 +163,13 @@ export const contextRulesApi = {
       });
       return response.data;
     } catch (error) {
-      console.error(`Error testing context rule ${ruleId}:`, error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error testing context rule ${ruleId}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       // Fallback for demo purposes
       return {
         result: "This query matches the context rule.",
@@ -150,7 +186,13 @@ export const promptTemplatesApi = {
       const response = await api.get("/prompt-templates");
       return response.data;
     } catch (error) {
-      console.error("Error fetching prompt templates:", error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          "Error fetching prompt templates",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       // Fallback to local data
       return [
         {
@@ -197,7 +239,13 @@ export const promptTemplatesApi = {
       const response = await api.get(`/prompt-templates/${id}`);
       return response.data;
     } catch (error) {
-      console.error(`Error fetching prompt template ${id}:`, error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error fetching prompt template ${id}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       // Fallback to local data
       const templates = await promptTemplatesApi.getAll();
       const template = templates.find((t) => t.id === id);
@@ -217,7 +265,13 @@ export const promptTemplatesApi = {
       const response = await api.post("/prompt-templates", template);
       return response.data;
     } catch (error) {
-      console.error("Error creating prompt template:", error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          "Error creating prompt template",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       // Fallback for demo purposes
       const newTemplate: PromptTemplate = {
         ...template,
@@ -237,7 +291,13 @@ export const promptTemplatesApi = {
       const response = await api.put(`/prompt-templates/${id}`, template);
       return response.data;
     } catch (error) {
-      console.error(`Error updating prompt template ${id}:`, error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error updating prompt template ${id}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       // Fallback for demo purposes
       const existingTemplate = await promptTemplatesApi.getById(id);
       const updatedTemplate: PromptTemplate = {
@@ -253,7 +313,13 @@ export const promptTemplatesApi = {
     try {
       await api.delete(`/prompt-templates/${id}`);
     } catch (error) {
-      console.error(`Error deleting prompt template ${id}:`, error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error deleting prompt template ${id}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       // Silently fail for demo purposes
     }
   },
@@ -272,7 +338,13 @@ export const chatApi = {
       });
       return response.data;
     } catch (error) {
-      console.error("Error sending chat message:", error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          "Error sending chat message",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       // Fallback for demo purposes
       return {
         id: Date.now().toString(),
@@ -289,7 +361,13 @@ export const chatApi = {
       const response = await api.get("/chat/history");
       return response.data;
     } catch (error) {
-      console.error("Error fetching chat history:", error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          "Error fetching chat history",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       // Fallback to local data
       return [
         {
@@ -329,10 +407,13 @@ export const analyticsApi = {
       const response = await api.get(`/analytics/overview?period=${period}`);
       return response.data;
     } catch (error) {
-      console.error(
-        `Error fetching analytics overview for period ${period}:`,
-        error,
-      );
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error fetching analytics overview for period ${period}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       // Fallback to local data
       return {
         totalConversations: 1248,
@@ -350,7 +431,13 @@ export const analyticsApi = {
       const response = await api.get(`/analytics/messages-by-day?days=${days}`);
       return response.data;
     } catch (error) {
-      console.error(`Error fetching messages by day for ${days} days:`, error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error fetching messages by day for ${days} days`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       // Generate fallback data for the past 'days' days
       const data = [];
       const now = new Date();
@@ -376,7 +463,13 @@ export const analyticsApi = {
       const response = await api.get(`/analytics/top-queries?limit=${limit}`);
       return response.data;
     } catch (error) {
-      console.error(`Error fetching top queries with limit ${limit}:`, error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          `Error fetching top queries with limit ${limit}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       // Fallback to local data
       return [
         { query: "How to embed chat widget", count: 145 },

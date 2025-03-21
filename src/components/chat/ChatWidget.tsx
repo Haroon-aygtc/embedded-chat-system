@@ -157,9 +157,12 @@ const ChatWidget = ({
 
       // If WebSocket is not connected, fall back to simulated response
       if (!messageSent) {
-        console.warn(
-          "WebSocket not connected, falling back to simulated response",
-        );
+        import("@/utils/logger").then((module) => {
+          const logger = module.default;
+          logger.warn(
+            "WebSocket not connected, falling back to simulated response",
+          );
+        });
         setTimeout(() => {
           const assistantMessage: Message = {
             id: (Date.now() + 1).toString(),
@@ -175,7 +178,13 @@ const ChatWidget = ({
         }, 1500);
       }
     } catch (error) {
-      console.error("Error sending message:", error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.error(
+          "Error sending message",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
       setIsLoading(false);
       setIsAssistantTyping(false);
 

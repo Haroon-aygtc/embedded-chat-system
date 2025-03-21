@@ -113,11 +113,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     const token = localStorage.getItem("token");
     const storedUser = localStorage.getItem("user");
+    const tokenExpiry = localStorage.getItem("tokenExpiry");
 
-    if (token && storedUser) {
+    if (token && storedUser && tokenExpiry) {
       try {
-        // Simple token validation - in browser we can't use jsonwebtoken
-        // In a real app, we would validate the token on the server or use a browser-compatible JWT library
+        // Check if token is expired
+        const expiryTime = parseInt(tokenExpiry, 10);
+        const now = Date.now();
+
+        if (now >= expiryTime) {
+          // Token expired, clear storage
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          localStorage.removeItem("tokenExpiry");
+          return;
+        }
+
         const user = JSON.parse(storedUser) as User;
         dispatch({
           type: "LOGIN_SUCCESS",
@@ -126,6 +137,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       } catch (error) {
         localStorage.removeItem("token");
         localStorage.removeItem("user");
+        localStorage.removeItem("tokenExpiry");
       }
     }
   }, []);
@@ -138,19 +150,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const response = await api.post("/auth/login", { email, password });
       const { user, token } = response.data;
 
-      // Store in localStorage
+      // Store in localStorage with expiry (24 hours from now)
+      const expiryTime = Date.now() + 24 * 60 * 60 * 1000;
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(user));
+      localStorage.setItem("tokenExpiry", expiryTime.toString());
 
       dispatch({
         type: "LOGIN_SUCCESS",
         payload: { user, token },
       });
     } catch (error) {
-      console.error(
-        "API login failed, falling back to mock authentication:",
-        error,
-      );
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.warn("API login failed, falling back to mock authentication", {
+          extra: {
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
+      });
 
       // Fallback to mock authentication for demo purposes
       const user = mockUsers.find((u) => u.email === email);
@@ -163,9 +181,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         // Generate a mock token
         const token = "mock-jwt-token-" + Date.now();
 
-        // Store in localStorage
+        // Store in localStorage with expiry (24 hours from now)
+        const expiryTime = Date.now() + 24 * 60 * 60 * 1000;
         localStorage.setItem("token", token);
         localStorage.setItem("user", JSON.stringify(user));
+        localStorage.setItem("tokenExpiry", expiryTime.toString());
 
         dispatch({
           type: "LOGIN_SUCCESS",
@@ -188,10 +208,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       await api.post("/auth/register", { name, email, password });
       dispatch({ type: "REGISTER_SUCCESS" });
     } catch (error: any) {
-      console.error(
-        "API registration failed, falling back to mock registration:",
-        error,
-      );
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.warn(
+          "API registration failed, falling back to mock registration",
+          {
+            extra: {
+              error: error instanceof Error ? error.message : String(error),
+            },
+          },
+        );
+      });
 
       // Fallback to mock registration for demo purposes
       // Check if user already exists
@@ -218,10 +245,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       await api.post("/auth/forgot-password", { email });
       dispatch({ type: "PASSWORD_RESET_SUCCESS" });
     } catch (error) {
-      console.error(
-        "API password reset request failed, falling back to mock request:",
-        error,
-      );
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.warn(
+          "API password reset request failed, falling back to mock request",
+          {
+            extra: {
+              error: error instanceof Error ? error.message : String(error),
+            },
+          },
+        );
+      });
 
       // Fallback to mock password reset request for demo purposes
       dispatch({ type: "PASSWORD_RESET_SUCCESS" });
@@ -236,10 +270,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       await api.post("/auth/reset-password", { token, newPassword });
       dispatch({ type: "PASSWORD_RESET_SUCCESS" });
     } catch (error) {
-      console.error(
-        "API password reset failed, falling back to mock reset:",
-        error,
-      );
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.warn("API password reset failed, falling back to mock reset", {
+          extra: {
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
+      });
 
       // Fallback to mock password reset for demo purposes
       dispatch({ type: "PASSWORD_RESET_SUCCESS" });
@@ -249,12 +287,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const logout = () => {
     // Try to logout with the API (in background, don't wait for response)
     api.post("/auth/logout").catch((error) => {
-      console.error("API logout failed:", error);
+      import("@/utils/logger").then((module) => {
+        const logger = module.default;
+        logger.warn("API logout failed", {
+          extra: {
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
+      });
     });
 
     // Always clear local storage and update state
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    localStorage.removeItem("tokenExpiry");
     dispatch({ type: "LOGOUT" });
   };
 
