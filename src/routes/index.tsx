@@ -3,30 +3,43 @@ import { Route, Routes, Navigate } from "react-router-dom";
 import Home from "../components/home";
 import Dashboard from "../pages/admin/dashboard";
 import LoginPage from "../pages/auth/login";
+import SignupPage from "../pages/auth/signup";
+import ForgotPasswordPage from "../pages/auth/forgot-password";
+import ResetPasswordPage from "../pages/auth/reset-password";
 import ProtectedRoute from "../components/auth/ProtectedRoute";
+import AdminRoute from "../components/auth/AdminRoute";
 
 const AppRoutes = () => {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/signup" element={<SignupPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route
+        path="/reset-password/:resetToken"
+        element={<ResetPasswordPage />}
+      />
+
+      {/* Admin routes */}
       <Route
         path="/admin/dashboard"
         element={
-          <ProtectedRoute>
+          <AdminRoute>
             <Dashboard />
-          </ProtectedRoute>
+          </AdminRoute>
         }
       />
       <Route
         path="/admin/*"
         element={
-          <ProtectedRoute>
+          <AdminRoute>
             <Navigate to="/admin/dashboard" replace />
-          </ProtectedRoute>
+          </AdminRoute>
         }
       />
-      {/* Add more routes as needed */}
+
+      {/* Catch-all route */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -30,6 +30,8 @@ class WebSocketService {
   private lastPingTime = 0;
   private heartbeatIntervalMs = 30000; // 30 seconds
   private heartbeatTimeoutMs = 10000; // 10 seconds
+  private clientId: string =
+    localStorage.getItem("ws_client_id") || this.generateClientId();
 
   constructor(url: string) {
     this.url = url;
@@ -193,14 +195,21 @@ class WebSocketService {
   }
 
   sendMessage(message: any): boolean {
+    // Add timestamp and client ID to outgoing messages
+    const enhancedMessage = {
+      ...message,
+      timestamp: message.timestamp || Date.now(),
+      clientId: this.getClientId(),
+    };
+
     if (this.socket?.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify(message));
+      this.socket.send(JSON.stringify(enhancedMessage));
       return true;
     } else {
       console.warn(
         "Cannot send message: WebSocket is not connected, queueing message",
       );
-      this.queueMessage(message);
+      this.queueMessage(enhancedMessage);
       return false;
     }
   }
@@ -309,11 +318,45 @@ class WebSocketService {
       this.startHeartbeat(); // Restart with new interval
     }
   }
+
+  // Generate a unique client ID for this browser session
+  private generateClientId(): string {
+    const id =
+      "client_" +
+      Math.random().toString(36).substring(2, 15) +
+      Math.random().toString(36).substring(2, 15);
+    localStorage.setItem("ws_client_id", id);
+    return id;
+  }
+
+  // Get the client ID for this session
+  getClientId(): string {
+    return this.clientId;
+  }
+
+  // Send authentication data to the server
+  authenticate(authData: any): boolean {
+    return this.sendMessage({
+      type: "auth",
+      data: authData,
+    });
+  }
 }
 
-// Create a singleton instance with a configurable URL
-// In a real implementation, this would come from environment variables
-const WS_URL = import.meta.env.VITE_WS_URL || "wss://chat-api.example.com/ws";
+// Create a singleton instance with a configurable URL from environment variables
+// Default to a secure WebSocket connection if no URL is provided
+const WS_URL = import.meta.env.VITE_WS_URL || "wss://api.chatservice.io/ws";
+
+// Initialize the WebSocket service
 const websocketService = new WebSocketService(WS_URL);
+
+// Auto-connect when the service is imported (can be disabled by setting VITE_WS_AUTO_CONNECT=false)
+if (import.meta.env.VITE_WS_AUTO_CONNECT !== "false") {
+  // Small delay to ensure app is fully loaded before connecting
+  setTimeout(() => {
+    console.log("Auto-connecting to WebSocket server:", WS_URL);
+    websocketService.connect();
+  }, 1000);
+}
 
 export default websocketService;

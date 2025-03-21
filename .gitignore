@@ -30,6 +30,6 @@ dist-ssr
 **/tempobook/storyboards/
 
 core
-
+.tempobook
 .github/
 
