@@ -1,6 +1,6 @@
 import React from "react";
 import { BrowserRouter } from "react-router-dom";
-import LoginForm from "@/components/auth/LoginForm";
+import LoginForm from "../../../../src/components/auth/LoginForm";
 
 export default function AuthDemo() {
   return (

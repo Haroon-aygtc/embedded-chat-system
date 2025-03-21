@@ -17,7 +17,7 @@ import {
   CommandList,
   CommandSeparator,
   CommandShortcut,
-} from "../components/ui/command";
+} from "@/components/ui/command";
 
 const meta = {
   title: "ui/Command",
@@ -72,3 +72,4 @@ export const Base = {
   },
   args: {},
 };
+

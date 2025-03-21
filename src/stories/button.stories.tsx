@@ -1,7 +1,7 @@
 // [build] library: 'shadcn'
 import { Loader2, Mail } from "lucide-react";
 
-import { Button } from "../components/ui/button";
+import { Button } from "@/components/ui/button";
 
 const meta = {
   title: "ui/Button",
@@ -60,3 +60,20 @@ export const WithIcon = {
     variant: "secondary",
   },
 };
+export const Fallback = {
+  render: () => <Button className="bg-slate-500 dark:bg-slate-800">Button</Button>,
+  args: {},
+};
+export const CustomButton = {
+  render: (args: any) => <Button {...args}>With Icon</Button>,
+  args: {},
+};
+
+export const Default = {
+  render: () => <Button>Default</Button>,
+  args: {},
+};
+
+
+
+

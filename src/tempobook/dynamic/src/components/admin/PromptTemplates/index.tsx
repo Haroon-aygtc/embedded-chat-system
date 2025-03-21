@@ -1,4 +1,4 @@
-
+import React from "react";
             import PromptTemplates from "./../../../../../../components/admin/PromptTemplates.tsx";
 
             const TempoComponent = () => {

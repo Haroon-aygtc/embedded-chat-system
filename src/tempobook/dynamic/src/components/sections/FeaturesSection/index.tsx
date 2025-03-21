@@ -1,5 +1,6 @@
 
-            import FeaturesSection from "./../../../../../../components/sections/FeaturesSection.tsx";
+            import FeaturesSection from "../../../../../../components/sections/FeaturesSection";
+import React from "react";
 
             const TempoComponent = () => {
               return <FeaturesSection />;

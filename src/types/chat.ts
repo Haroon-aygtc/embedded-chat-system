@@ -20,3 +20,20 @@ export interface WebSocketMessage {
   payload: any;
   timestamp: string;
 }
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ChatSession {
+  id: string;
+  messages: Message[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+

@@ -1,5 +1,5 @@
 // [build] library: 'shadcn'
-import { Progress } from "../components/ui/progress";
+import { Progress } from "@/components/ui/progress";
 
 const meta = {
   title: "ui/Progress",
@@ -13,3 +13,8 @@ export const Base = {
   render: () => <Progress value={33} />,
   args: {},
 };
+
+
+
+
+

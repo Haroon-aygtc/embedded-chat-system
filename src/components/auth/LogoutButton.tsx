@@ -1,7 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
-import { Button } from "../ui/button";
+import { useAuth } from "@/context/AuthContext";
+import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 
 interface LogoutButtonProps {

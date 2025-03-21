@@ -1,8 +1,8 @@
 import { Suspense } from "react";
 import { Routes, Route, useRoutes } from "react-router-dom";
 import routes from "tempo-routes";
-import AppRoutes from "./routes";
-import { AuthProvider } from "./context/AuthContext";
+import AppRoutes from "@/routes";
+import { AuthProvider } from "@/context/AuthContext";
 
 function App() {
   return (

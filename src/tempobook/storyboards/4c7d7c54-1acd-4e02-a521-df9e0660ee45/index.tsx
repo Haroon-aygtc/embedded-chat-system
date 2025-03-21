@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
-import websocketService, { ConnectionState } from "@/services/websocketService";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import websocketService, { ConnectionState } from "../../../../src/services/websocketService";
+import { Button } from "../../../../src/components/ui/button";
+import { Card } from "../../../../src/components/ui/card";
 
 export default function WebSocketServiceDemo() {
   const [connectionState, setConnectionState] = useState<ConnectionState>(

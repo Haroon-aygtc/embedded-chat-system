@@ -1,5 +1,5 @@
 // [build] library: 'shadcn'
-import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const meta = {
   title: "ui/Avatar",
@@ -19,3 +19,14 @@ export const Base = {
   ),
   args: {},
 };
+
+
+export const Fallback = {
+  render: () => (
+    <Avatar>
+      <AvatarFallback>CN</AvatarFallback>
+    </Avatar>
+  ),
+  args: {},
+};
+

@@ -1,6 +1,5 @@
-
-            import ChatInput from "./../../../../../../components/chat/ChatInput.tsx";
-
+import ChatInput from "../../../../../../components/chat/ChatInput";
+import React from "react";
             const TempoComponent = () => {
               return <ChatInput />;
             }

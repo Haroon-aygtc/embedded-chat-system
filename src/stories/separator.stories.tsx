@@ -1,5 +1,5 @@
 // [build] library: 'shadcn'
-import { Separator } from "../components/ui/separator";
+import { Separator } from "@/components/ui/separator";
 
 const meta = {
   title: "ui/Separator",

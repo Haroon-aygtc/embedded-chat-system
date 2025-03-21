@@ -6,7 +6,7 @@ import {
   NavigationMenuLink,
   NavigationMenuList,
   NavigationMenuTrigger,
-} from "../components/ui/navigation-menu";
+} from "@/components/ui/navigation-menu";
 
 import { MoonIcon } from "@radix-ui/react-icons";
 

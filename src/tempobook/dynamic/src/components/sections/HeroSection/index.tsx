@@ -1,5 +1,6 @@
 
-            import HeroSection from "./../../../../../../components/sections/HeroSection.tsx";
+            import HeroSection from "./../../../../../../components/sections/HeroSection";
+import React from "react";
 
             const TempoComponent = () => {
               return <HeroSection />;

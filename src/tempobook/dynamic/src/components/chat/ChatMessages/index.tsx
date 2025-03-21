@@ -1,5 +1,6 @@
 
-            import ChatMessages from "./../../../../../../components/chat/ChatMessages.tsx";
+            import ChatMessages from "../../../../../../components/chat/ChatMessages";
+import React from "react";
 
             const TempoComponent = () => {
               return <ChatMessages />;
@@ -7,4 +8,4 @@
 
             
 
-            export default TempoComponent;
+              export default TempoComponent;

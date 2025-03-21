@@ -1,5 +1,5 @@
 // [build] library: 'shadcn'
-import { Checkbox } from "../components/ui/checkbox";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const meta = {
   title: "ui/Checkbox",
@@ -44,3 +44,37 @@ export const Disabled = {
     disabled: true,
   },
 };
+
+export const Indeterminate = {
+  render: (args: any) => (
+    <div className="flex items-center space-x-2">
+      <Checkbox {...args} id="terms3" />
+      <label
+        htmlFor="terms3"
+        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+      >
+        Accept terms and conditions
+      </label>
+    </div>
+  ),
+  args: {
+    indeterminate: true,
+  },
+};
+
+export const WithLabel = {
+  render: (args: any) => (
+    <div className="flex items-center space-x-2">
+      <Checkbox {...args} id="terms4" />
+      <label
+        htmlFor="terms4"
+        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+      >
+        Accept terms and conditions
+      </label>
+    </div>
+  ),
+  args: {},
+};
+
+

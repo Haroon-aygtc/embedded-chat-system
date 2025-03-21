@@ -13,7 +13,7 @@ import {
   ContextMenuSubContent,
   ContextMenuSubTrigger,
   ContextMenuTrigger,
-} from "../components/ui/context-menu";
+} from "@/components/ui/context-menu";
 
 const meta = {
   title: "ui/ContextMenu",
@@ -75,3 +75,4 @@ export const Base = {
   ),
   args: {},
 };
+

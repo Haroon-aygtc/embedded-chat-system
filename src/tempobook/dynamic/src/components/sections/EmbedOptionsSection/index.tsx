@@ -1,5 +1,6 @@
 
-            import EmbedOptionsSection from "./../../../../../../components/sections/EmbedOptionsSection.tsx";
+            import EmbedOptionsSection from "./../../../../../../components/sections/EmbedOptionsSection";
+import React from "react";
 
             const TempoComponent = () => {
               return <EmbedOptionsSection />;

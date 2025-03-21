@@ -1,5 +1,5 @@
 // [build] library: 'shadcn'
-import { Badge } from "../components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 
 const meta = {
   title: "ui/Badge",
@@ -31,3 +31,14 @@ export const Destructive = {
     variant: "destructive",
   },
 };
+
+export const Fallback = {
+  render: () => <Badge className="bg-slate-500 dark:bg-slate-800">Badge</Badge>,
+  args: {},
+};
+
+export const WithIcon = {
+  render: (args: any) => <Badge {...args}>With Icon</Badge>,
+  args: {},
+};
+

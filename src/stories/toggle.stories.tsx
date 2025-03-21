@@ -1,6 +1,6 @@
 // [build] library: 'shadcn'
 import { FontItalicIcon, FontBoldIcon } from "@radix-ui/react-icons";
-import { Toggle } from "../components/ui/toggle";
+import { Toggle } from "@/components/ui/toggle";
 
 const meta = {
   title: "ui/Toggle",

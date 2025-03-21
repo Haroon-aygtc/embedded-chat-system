@@ -1,4 +1,4 @@
-
+import React from "react";
             import ChatHeader from "./../../../../../../components/chat/ChatHeader.tsx";
 
             const TempoComponent = () => {

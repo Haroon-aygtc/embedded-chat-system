@@ -1,5 +1,4 @@
-import React from "react";
-import { Button } from "../ui/button";
+import { Button } from "@/components/ui/button";
 import { ArrowRight, MessageSquare } from "lucide-react";
 import { motion } from "framer-motion";
 

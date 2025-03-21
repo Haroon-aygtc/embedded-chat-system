@@ -1,12 +1,12 @@
 // [build] library: 'shadcn'
-import { Calendar } from "../components/ui/calendar";
+import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon } from "@radix-ui/react-icons";
 
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "../components/ui/popover";
+} from "@/components/ui/popover";
 
 import {
   Select,
@@ -14,9 +14,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../components/ui/select";
+} from "@/components/ui/select";
 
-import { Button } from "../components/ui/button";
+import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { DateRange } from "react-day-picker";
 import { addDays, format } from "date-fns";
@@ -158,5 +158,10 @@ export const DatePickerWithPresets = {
       </Popover>
     );
   },
+  args: {},
+};
+
+export const Default = {
+  render: () => <Calendar />,
   args: {},
 };

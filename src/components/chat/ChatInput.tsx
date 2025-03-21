@@ -116,7 +116,7 @@ const ChatInput = ({
             <TooltipTrigger asChild>
               <Button
                 type="submit"
-                variant="primary"
+                variant="default"
                 size="icon"
                 className="bg-blue-600 hover:bg-blue-700 text-white rounded-full"
                 disabled={disabled || !message.trim()}

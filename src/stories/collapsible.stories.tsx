@@ -1,12 +1,12 @@
 // [build] library: 'shadcn'
 import { ChevronsUpDown } from "lucide-react";
 
-import { Button } from "../components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "../components/ui/collapsible";
+} from "@/components/ui/collapsible";
 
 const meta = {
   title: "ui/Collapsible",
@@ -80,3 +80,28 @@ export const Open = {
     onOpenChange: () => null,
   },
 };
+
+export const Default = {
+  render: () => <Collapsible>
+    <CollapsibleTrigger  asChild>
+      <Button>Toggle</Button>
+    </CollapsibleTrigger>
+    <CollapsibleContent>
+      <p>Content</p>
+    </CollapsibleContent>
+  </Collapsible>,
+  args: {},
+};
+
+export const WithHeader = {
+  render: () => <Collapsible>
+    <CollapsibleTrigger asChild>
+      <Button>Toggle</Button>
+    </CollapsibleTrigger>
+    <CollapsibleContent>
+      <p>Content</p>
+    </CollapsibleContent>
+  </Collapsible>,
+  args: {},
+};
+

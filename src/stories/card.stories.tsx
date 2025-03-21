@@ -1,7 +1,7 @@
 // [build] library: 'shadcn'
 
 import { BellIcon, CheckIcon } from "@radix-ui/react-icons";
-import { Button } from "../components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -9,17 +9,17 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "../components/ui/card";
-import { Switch } from "../components/ui/switch";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
+} from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../components/ui/select";
+} from "@/components/ui/select";
 
 const meta = {
   title: "ui/Card",
@@ -143,4 +143,67 @@ export const Notifications = {
     mode: "single",
     className: "rounded-md border",
   },
+};
+
+export const Default = {
+  render: () => <Card />,
+  args: {},
+};
+
+export const WithImage = {
+  render: () => <Card>
+    <CardHeader>
+      <CardTitle>Card Title</CardTitle>
+    </CardHeader>
+    <CardContent>
+      <img src="https://images.unsplash.com/photo-1576075796033-848c2a5f3696?w=800&dpr=2&q=80" alt="Card Image" />
+    </CardContent>
+    <CardFooter>
+      <Button>Read More</Button>
+    </CardFooter>
+  </Card>,
+  args: {},
+};
+
+export const WithFooter = {
+  render: () => <Card>
+    <CardHeader>
+      <CardTitle>Card Title</CardTitle>
+    </CardHeader>
+    <CardContent>
+      <p>Card Content</p>
+    </CardContent>
+    <CardFooter>
+      <Button>Read More</Button>
+    </CardFooter>
+  </Card>,
+  args: {},
+};
+
+export const WithHeader = {
+  render: () => <Card>
+    <CardHeader>
+      <CardTitle>Card Title</CardTitle>
+    </CardHeader>
+    <CardContent>
+      <p>Card Content</p>
+    </CardContent>
+  </Card>,
+  args: {},
+};
+
+
+export const WithContent = {
+  render: () => <Card>
+    <CardHeader>
+      <CardTitle>Card Title</CardTitle>
+    </CardHeader>
+    <CardContent>
+      <p>Card Content</p>
+    </CardContent>
+    <CardFooter>
+      <Button>Read More</Button>
+    </CardFooter>
+  </Card>,
+  args: {},
 };

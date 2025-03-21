@@ -1,4 +1,6 @@
-import ChatWidget from "@/components/chat/ChatWidget";
+
+import React from "react";
+import ChatWidget from "../../../../src/components/chat/ChatWidget";
 
 export default function ChatWidgetStoryboard() {
   return (
