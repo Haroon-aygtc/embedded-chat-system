@@ -11,6 +11,8 @@ import ChatEmbedPage from "../pages/chat-embed";
 import ProtectedRoute from "../components/auth/ProtectedRoute";
 import AdminRoute from "../components/auth/AdminRoute";
 import ApiKeysPage from "../pages/admin/api-keys";
+import ModerationQueue from "../components/admin/ModerationQueue";
+import ModerationRules from "../components/admin/ModerationRules";
 
 const AppRoutes = () => {
   return (
@@ -42,6 +44,22 @@ const AppRoutes = () => {
         element={
           <AdminRoute>
             <ApiKeysPage />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/admin/moderation/queue"
+        element={
+          <AdminRoute>
+            <ModerationQueue />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/admin/moderation/rules"
+        element={
+          <AdminRoute>
+            <ModerationRules />
           </AdminRoute>
         }
       />
