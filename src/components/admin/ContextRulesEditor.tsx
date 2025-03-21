@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, Trash2, Save, AlertCircle, Info, Edit, Eye, Loader2 } from "lucide-react";
+import { Plus, Trash2, Save, AlertCircle, Info, Edit, Eye, Loader2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -160,7 +160,7 @@ const ContextRulesEditor = () => {
 
     try {
       setIsSaving(true);
-      const updatedRule = await contextRulesApi.update(selectedRule.id, data);
+      const updatedRule = await contextRulesApi.update(selectedRule.id, data as Partial<ContextRule>);
       setRules(rules.map(rule => rule.id === updatedRule.id ? updatedRule : rule));
       setSelectedRule(null);
       setActiveTab("rules-list");
@@ -571,3 +571,163 @@ const ContextRulesEditor = () => {
                       ) : null}
                       <div className="flex flex-wrap gap-1 min-h-[40px] p-2 border rounded-md">
                         {watch("keywords")?.map((keyword) => (
+                          <Badge key={keyword} variant="secondary">
+                            {keyword}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveKeyword(keyword)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label>Excluded Topics</Label>  
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setIsAddingExcludedTopic(true)}
+                        >
+                          <Plus className="h-4 w-4 mr-1" /> Add
+                        </Button>
+                      </div>
+                      {isAddingExcludedTopic ? (
+                        <div className="flex space-x-2">
+                          <Input
+                            value={newExcludedTopic}
+                            onChange={(e) => setNewExcludedTopic(e.target.value)}
+                            placeholder="Enter topic"
+                            className="flex-1"
+                          />
+                          <Button
+                            type="button"
+                            onClick={handleAddExcludedTopic}
+                            size="sm"
+                          >
+                            Add
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsAddingExcludedTopic(false)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : null}
+                      <div className="flex flex-wrap gap-1 min-h-[40px] p-2 border rounded-md">
+                        {watch("excludedTopics")?.map((topic) => (
+                          <Badge key={topic} variant="outline">
+                            {topic}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveExcludedTopic(topic)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label>Response Filters</Label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setIsAddingFilter(true)}
+                        >
+                          <Plus className="h-4 w-4 mr-1" /> Add
+                        </Button>
+                      </div>
+                      {isAddingFilter ? (
+                        <div className="flex space-x-2">
+                          <Select
+                            value={newFilter.type}
+                            onValueChange={(value) =>
+                              setNewFilter({ ...newFilter, type: value as "keyword" | "regex" | "semantic" })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select filter type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="keyword">Keyword</SelectItem>
+                              <SelectItem value="regex">Regex</SelectItem>
+                              <SelectItem value="semantic">Semantic</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            value={newFilter.value}
+                            onChange={(e) => setNewFilter({ ...newFilter, value: e.target.value })}
+                            placeholder="Enter filter value"
+                            className="flex-1"
+                          />
+                          <Button
+                            type="button"
+                            onClick={handleAddFilter}
+                            size="sm"
+                          >
+                            Add
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsAddingFilter(false)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : null}
+                      <div className="flex flex-wrap gap-1 min-h-[40px] p-2 border rounded-md">
+                        {watch("responseFilters")?.map((filter, index) => (
+                          <Badge key={index} variant="outline">
+                            {filter.type === "keyword"
+                              ? filter.value
+                              : filter.type === "regex"
+                                ? filter.value
+                                : filter.value}
+                            <Button
+                              type="button"
+                              variant="ghost" 
+                              size="icon"
+                              onClick={() => handleRemoveFilter(index)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <CardFooter>
+                  <Button type="submit" disabled={isSaving}>
+                    {isSaving ? "Saving..." : "Save"}
+                  </Button>
+                </CardFooter>
+              </CardContent>
+            </form>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+};
+
+  export default ContextRulesEditor;
+
+ 

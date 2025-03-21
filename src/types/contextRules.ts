@@ -14,9 +14,9 @@ export interface ContextRule {
   isActive: boolean;
   contextType: "business" | "general";
   keywords: string[];
-  excludedTopics?: string[];
+  excludedTopics: string[];
   promptTemplate: string;
-  responseFilters?: ResponseFilter[];
+  responseFilters: ResponseFilter[];
   createdAt: string;
   updatedAt: string;
 }
