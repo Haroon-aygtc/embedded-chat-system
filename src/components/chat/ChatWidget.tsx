@@ -388,6 +388,34 @@ const ChatWidget = ({
     </>
   );
 
+  // Listen for messages from parent window when embedded
+  useEffect(() => {
+    if (embedded) {
+      const handleMessage = (event: MessageEvent) => {
+        // Verify the origin for security
+        if (event.origin !== window.location.origin) return;
+
+        // Handle resize events from parent
+        if (event.data && event.data.type === "chat-widget-resize") {
+          // Adjust layout based on new dimensions if needed
+          const { width, height, deviceType } = event.data;
+
+          // You could set these values in state if needed
+          // For example, to adjust UI for very small screens
+          if (width < 300 || height < 400) {
+            // Apply compact mode adjustments
+          }
+        }
+      };
+
+      window.addEventListener("message", handleMessage);
+
+      return () => {
+        window.removeEventListener("message", handleMessage);
+      };
+    }
+  }, [embedded]);
+
   // If this is a full page experience
   if (isFullPage) {
     return (

@@ -42,8 +42,28 @@ const IframeEmbed: React.FC<IframeEmbedProps> = ({
   height="600px" 
   frameborder="0" 
   allow="microphone" 
-  style="border: none; width: 100%; height: 600px;"
-></iframe>`;
+  loading="lazy"
+  importance="low"
+  style="border: none; width: 100%; height: 600px; max-width: 450px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);"
+></iframe>
+
+<!-- Responsive styles for the iframe -->
+<style>
+  @media (max-width: 480px) {
+    iframe {
+      width: 100% !important;
+      max-width: 100% !important;
+      height: 500px !important;
+    }
+  }
+  
+  @media (max-width: 768px) and (orientation: landscape) {
+    iframe {
+      height: 90vh !important;
+      min-height: 300px !important;
+    }
+  }
+</style>`;
   };
 
   // Generate the web component code
@@ -54,8 +74,29 @@ const IframeEmbed: React.FC<IframeEmbedProps> = ({
     if (title) attributes += ` title="${title}"`;
     if (position) attributes += ` position="${position}"`;
 
-    return `<script src="${baseUrl}/chat-widget.js"></script>
-<chat-widget${attributes}></chat-widget>`;
+    return `<!-- Add this script to your page head for better performance -->
+<script src="${baseUrl}/chat-widget.js" async defer></script>
+
+<!-- Place this where you want the chat widget to appear -->
+<chat-widget${attributes} lazy-load="true"></chat-widget>
+
+<!-- Optional: Add custom styles for the chat widget -->
+<style>
+  chat-widget {
+    display: block;
+    width: 100%;
+    max-width: 450px;
+    height: 600px;
+    margin: 0 auto;
+  }
+  
+  @media (max-width: 480px) {
+    chat-widget {
+      max-width: 100%;
+      height: 500px;
+    }
+  }
+</style>`;
   };
 
   const handleCopy = (code: string) => {
