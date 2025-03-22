@@ -4,9 +4,14 @@
  * - Development: Starts both Vite dev server and WebSocket server
  * - Production: Starts Express static server and WebSocket server
  */
-const { spawn } = require("child_process");
-const path = require("path");
-const fs = require("fs");
+import { spawn } from "child_process";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+
+// Get __dirname equivalent in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Environment detection
 const NODE_ENV = process.env.NODE_ENV || "development";
@@ -88,9 +93,14 @@ function startFrontendServer() {
     const expressServerPath = path.join(__dirname, "server/express-server.js");
     if (!fs.existsSync(expressServerPath)) {
       const expressServerContent = `
-        const express = require('express');
-        const path = require('path');
-        const compression = require('compression');
+        import express from 'express';
+        import path from 'path';
+        import { fileURLToPath } from 'url';
+        import compression from 'compression';
+        
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = path.dirname(__filename);
+        
         const app = express();
         const PORT = process.env.PORT || 5173;
         
@@ -116,13 +126,24 @@ function startFrontendServer() {
 
       // Install express and compression if not already installed
       try {
-        require.resolve("express");
-        require.resolve("compression");
+        // In ES modules, we can't use require.resolve, so we'll check if the package.json includes these dependencies
+        const packageJson = JSON.parse(
+          fs.readFileSync(path.join(__dirname, "package.json"), "utf8"),
+        );
+        const hasExpress =
+          packageJson.dependencies && packageJson.dependencies.express;
+        const hasCompression =
+          packageJson.dependencies && packageJson.dependencies.compression;
+
+        if (!hasExpress || !hasCompression) {
+          logger.warn("Express", "Installing required dependencies...");
+          const spawnSync = spawn.sync;
+          spawnSync("npm", ["install", "--save", "express", "compression"], {
+            stdio: "inherit",
+          });
+        }
       } catch (e) {
-        logger.warn("Express", "Installing required dependencies...");
-        spawn.sync("npm", ["install", "--save", "express", "compression"], {
-          stdio: "inherit",
-        });
+        logger.error("Express", `Error checking dependencies: ${e.message}`);
       }
     }
 

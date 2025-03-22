@@ -1,8 +1,8 @@
 /**
  * Simple WebSocket server for development
  */
-const WebSocket = require("ws");
-const http = require("http");
+import WebSocket from "ws";
+import http from "http";
 
 // Create HTTP server
 const server = http.createServer((req, res) => {

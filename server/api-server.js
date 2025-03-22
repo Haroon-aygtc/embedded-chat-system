@@ -2,10 +2,10 @@
  * API Server for handling REST API requests
  * This complements the WebSocket server for non-real-time operations
  */
-const express = require("express");
-const cors = require("cors");
-const bodyParser = require("body-parser");
-const { createClient } = require("@supabase/supabase-js");
+import express from "express";
+import cors from "cors";
+import bodyParser from "body-parser";
+import { createClient } from "@supabase/supabase-js";
 
 // Initialize Express app
 const app = express();
@@ -393,4 +393,4 @@ process.on("SIGTERM", () => {
   });
 });
 
-module.exports = app;
+export default app;
