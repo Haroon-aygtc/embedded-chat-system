@@ -13,6 +13,10 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Load environment variables from .env file
+import dotenv from "dotenv";
+dotenv.config();
+
 // Environment detection
 const NODE_ENV = process.env.NODE_ENV || "development";
 const isProd = NODE_ENV === "production";

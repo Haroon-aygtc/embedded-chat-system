@@ -6,6 +6,16 @@ import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
 import { createClient } from "@supabase/supabase-js";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// Get directory path for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables from .env file in the root directory
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 // Initialize Express app
 const app = express();
@@ -16,13 +26,30 @@ app.use(cors());
 app.use(bodyParser.json());
 
 // Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Check if Supabase credentials are available
+if (!supabaseUrl || !supabaseKey) {
+  console.warn(
+    "Supabase credentials missing. Some API endpoints may not work properly.",
+  );
+  console.warn(
+    "Please ensure SUPABASE_URL/VITE_SUPABASE_URL and SUPABASE_SERVICE_KEY are set in your .env file.",
+  );
+}
+
+// Initialize Supabase client only if credentials are available
+const supabase =
+  supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {
-  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+  res.status(200).json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    supabaseConnected: !!supabase,
+  });
 });
 
 // API Routes
@@ -30,6 +57,12 @@ app.get("/api/health", (req, res) => {
 // Auth API
 app.post("/api/auth/register", async (req, res) => {
   try {
+    if (!supabase) {
+      return res
+        .status(503)
+        .json({ error: "Database connection not available" });
+    }
+
     const { email, password, name } = req.body;
 
     if (!email || !password) {
@@ -58,6 +91,12 @@ app.post("/api/auth/register", async (req, res) => {
 
 app.post("/api/auth/login", async (req, res) => {
   try {
+    if (!supabase) {
+      return res
+        .status(503)
+        .json({ error: "Database connection not available" });
+    }
+
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -85,6 +124,12 @@ app.post("/api/auth/login", async (req, res) => {
 // Context Rules API
 app.get("/api/context-rules", async (req, res) => {
   try {
+    if (!supabase) {
+      return res
+        .status(503)
+        .json({ error: "Database connection not available" });
+    }
+
     const { data, error } = await supabase
       .from("context_rules")
       .select("*")
@@ -101,6 +146,12 @@ app.get("/api/context-rules", async (req, res) => {
 
 app.get("/api/context-rules/:id", async (req, res) => {
   try {
+    if (!supabase) {
+      return res
+        .status(503)
+        .json({ error: "Database connection not available" });
+    }
+
     const { id } = req.params;
     const { data, error } = await supabase
       .from("context_rules")
@@ -120,6 +171,12 @@ app.get("/api/context-rules/:id", async (req, res) => {
 
 app.post("/api/context-rules", async (req, res) => {
   try {
+    if (!supabase) {
+      return res
+        .status(503)
+        .json({ error: "Database connection not available" });
+    }
+
     const { name, description, content, isActive, priority } = req.body;
 
     if (!name || !content) {
@@ -151,6 +208,12 @@ app.post("/api/context-rules", async (req, res) => {
 
 app.put("/api/context-rules/:id", async (req, res) => {
   try {
+    if (!supabase) {
+      return res
+        .status(503)
+        .json({ error: "Database connection not available" });
+    }
+
     const { id } = req.params;
     const { name, description, content, isActive, priority } = req.body;
 
@@ -180,6 +243,12 @@ app.put("/api/context-rules/:id", async (req, res) => {
 
 app.delete("/api/context-rules/:id", async (req, res) => {
   try {
+    if (!supabase) {
+      return res
+        .status(503)
+        .json({ error: "Database connection not available" });
+    }
+
     const { id } = req.params;
     const { error } = await supabase
       .from("context_rules")
@@ -198,6 +267,12 @@ app.delete("/api/context-rules/:id", async (req, res) => {
 // Widget Configuration API
 app.get("/api/widget-configs", async (req, res) => {
   try {
+    if (!supabase) {
+      return res
+        .status(503)
+        .json({ error: "Database connection not available" });
+    }
+
     const { data, error } = await supabase.from("widget_configs").select("*");
 
     if (error) throw error;
@@ -211,6 +286,12 @@ app.get("/api/widget-configs", async (req, res) => {
 
 app.get("/api/widget-configs/:id", async (req, res) => {
   try {
+    if (!supabase) {
+      return res
+        .status(503)
+        .json({ error: "Database connection not available" });
+    }
+
     const { id } = req.params;
     const { data, error } = await supabase
       .from("widget_configs")
@@ -231,6 +312,12 @@ app.get("/api/widget-configs/:id", async (req, res) => {
 
 app.post("/api/widget-configs", async (req, res) => {
   try {
+    if (!supabase) {
+      return res
+        .status(503)
+        .json({ error: "Database connection not available" });
+    }
+
     const {
       name,
       primary_color,
@@ -281,6 +368,12 @@ app.post("/api/widget-configs", async (req, res) => {
 
 app.put("/api/widget-configs/:id", async (req, res) => {
   try {
+    if (!supabase) {
+      return res
+        .status(503)
+        .json({ error: "Database connection not available" });
+    }
+
     const { id } = req.params;
     const updates = {};
 
@@ -327,6 +420,12 @@ app.put("/api/widget-configs/:id", async (req, res) => {
 
 app.delete("/api/widget-configs/:id", async (req, res) => {
   try {
+    if (!supabase) {
+      return res
+        .status(503)
+        .json({ error: "Database connection not available" });
+    }
+
     const { id } = req.params;
     const { error } = await supabase
       .from("widget_configs")
@@ -345,6 +444,12 @@ app.delete("/api/widget-configs/:id", async (req, res) => {
 // Chat History API
 app.get("/api/chat-history", async (req, res) => {
   try {
+    if (!supabase) {
+      return res
+        .status(503)
+        .json({ error: "Database connection not available" });
+    }
+
     const { user_id, widget_id, limit = 50, offset = 0 } = req.query;
 
     let query = supabase
@@ -371,6 +476,12 @@ app.get("/api/chat-history", async (req, res) => {
 // Analytics API
 app.get("/api/analytics/overview", async (req, res) => {
   try {
+    if (!supabase) {
+      return res
+        .status(503)
+        .json({ error: "Database connection not available" });
+    }
+
     // Get total messages
     const { count: totalMessages, error: messagesError } = await supabase
       .from("chat_messages")

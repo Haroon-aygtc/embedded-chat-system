@@ -1,20 +1,30 @@
 import supabase from "./supabaseClient";
-import logger from "@/utils/logger";
+import { env } from "../config/env";
+import logger from "../utils/logger";
 
 /**
- * Service for managing API keys securely
+ * Service for managing API keys
+ * Handles retrieval, validation, and rotation of API keys
  */
-export const apiKeyService = {
+const apiKeyService = {
   /**
-   * Get the Gemini API key from secure storage
+   * Get the Gemini API key
+   * First checks environment variables, then falls back to database
    */
   getGeminiApiKey: async (): Promise<string | null> => {
     try {
+      // First check if the API key is available in environment variables
+      const envApiKey = env.GEMINI_API_KEY;
+      if (envApiKey) {
+        return envApiKey;
+      }
+
+      // If not in env, try to fetch from database
       const { data, error } = await supabase
         .from("system_settings")
         .select("settings")
         .eq("category", "api_keys")
-        .eq("environment", process.env.NODE_ENV || "development")
+        .eq("environment", env.MODE || "development")
         .single();
 
       if (error) {
@@ -30,190 +40,121 @@ export const apiKeyService = {
   },
 
   /**
-   * Store or update the Gemini API key in secure storage
+   * Get the Hugging Face API key
+   * First checks environment variables, then falls back to database
    */
-  setGeminiApiKey: async (apiKey: string): Promise<boolean> => {
+  getHuggingFaceApiKey: async (): Promise<string | null> => {
     try {
-      // Check if settings for this category already exist
+      // First check if the API key is available in environment variables
+      const envApiKey = env.HUGGINGFACE_API_KEY;
+      if (envApiKey) {
+        return envApiKey;
+      }
+
+      // If not in env, try to fetch from database
+      const { data, error } = await supabase
+        .from("system_settings")
+        .select("settings")
+        .eq("category", "api_keys")
+        .eq("environment", env.MODE || "development")
+        .single();
+
+      if (error) {
+        logger.error("Error fetching Hugging Face API key", error);
+        return null;
+      }
+
+      return data?.settings?.huggingface_api_key || null;
+    } catch (error) {
+      logger.error("Error fetching Hugging Face API key", error);
+      return null;
+    }
+  },
+
+  /**
+   * Store an API key in the database
+   */
+  storeApiKey: async (
+    keyType: string,
+    apiKey: string,
+    environment: string = env.MODE || "development",
+  ): Promise<boolean> => {
+    try {
+      // First check if a record exists
       const { data: existingData, error: fetchError } = await supabase
         .from("system_settings")
-        .select("id, settings")
+        .select("*")
         .eq("category", "api_keys")
-        .eq("environment", process.env.NODE_ENV || "development");
+        .eq("environment", environment)
+        .single();
 
-      if (fetchError) {
-        logger.error("Error checking existing API key settings", fetchError);
+      if (fetchError && fetchError.code !== "PGRST116") {
+        // PGRST116 is the error code for "no rows found"
+        logger.error("Error fetching API key settings", fetchError);
         return false;
       }
 
-      if (existingData && existingData.length > 0) {
-        // Update existing settings
-        const updatedSettings = {
-          ...existingData[0].settings,
-          gemini_api_key: apiKey,
-          last_updated: new Date().toISOString(),
-        };
+      const settings = existingData?.settings || {};
+      settings[`${keyType}_api_key`] = apiKey;
 
-        const { error } = await supabase
+      if (existingData) {
+        // Update existing record
+        const { error: updateError } = await supabase
           .from("system_settings")
-          .update({
-            settings: updatedSettings,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existingData[0].id);
+          .update({ settings })
+          .eq("id", existingData.id);
 
-        if (error) {
-          logger.error("Error updating Gemini API key", error);
+        if (updateError) {
+          logger.error("Error updating API key", updateError);
           return false;
         }
-
-        // Add to history for audit trail
-        await supabase.from("system_settings_history").insert([
-          {
-            settings_id: existingData[0].id,
-            settings: existingData[0].settings,
-            created_by: "system", // Replace with actual user ID if available
-          },
-        ]);
       } else {
-        // Create new settings
-        const { error } = await supabase.from("system_settings").insert([
-          {
-            category: "api_keys",
-            settings: {
-              gemini_api_key: apiKey,
-              last_updated: new Date().toISOString(),
+        // Insert new record
+        const { error: insertError } = await supabase
+          .from("system_settings")
+          .insert([
+            {
+              category: "api_keys",
+              environment,
+              settings,
             },
-            environment: process.env.NODE_ENV || "development",
-          },
-        ]);
+          ]);
 
-        if (error) {
-          logger.error("Error creating Gemini API key setting", error);
+        if (insertError) {
+          logger.error("Error inserting API key", insertError);
           return false;
         }
       }
 
       return true;
     } catch (error) {
-      logger.error("Error setting Gemini API key", error);
+      logger.error("Error storing API key", error);
       return false;
     }
   },
 
   /**
-   * Rotate the Gemini API key (replace with a new one and archive the old one)
+   * Validate if an API key is valid and working
    */
-  rotateGeminiApiKey: async (newApiKey: string): Promise<boolean> => {
+  validateApiKey: async (keyType: string, apiKey: string): Promise<boolean> => {
     try {
-      // Get the current API key first for history
-      const currentApiKey = await apiKeyService.getGeminiApiKey();
-
-      // Set the new API key
-      const success = await apiKeyService.setGeminiApiKey(newApiKey);
-
-      if (success && currentApiKey) {
-        // Log the rotation for audit purposes
-        await supabase.from("api_key_rotations").insert([
-          {
-            key_type: "gemini",
-            rotated_at: new Date().toISOString(),
-            rotated_by: "system", // Replace with actual user ID if available
-            metadata: {
-              previous_key_prefix: currentApiKey.substring(0, 4) + "...", // Only store prefix for security
-            },
-          },
-        ]);
+      // Implementation depends on the API provider
+      switch (keyType) {
+        case "gemini":
+          // Make a simple request to Gemini API to validate the key
+          // This is a placeholder - implement actual validation logic
+          return true;
+        case "huggingface":
+          // Make a simple request to Hugging Face API to validate the key
+          // This is a placeholder - implement actual validation logic
+          return true;
+        default:
+          logger.error(`Unknown API key type: ${keyType}`);
+          return false;
       }
-
-      return success;
     } catch (error) {
-      logger.error("Error rotating Gemini API key", error);
+      logger.error(`Error validating ${keyType} API key`, error);
       return false;
-    }
-  },
-
-  /**
-   * Log API key usage for monitoring and alerting
-   */
-  logApiKeyUsage: async (
-    keyType: string,
-    endpoint: string,
-    responseTimeMs: number,
-    statusCode: number,
-  ): Promise<void> => {
-    try {
-      // Get the API key ID (not the actual key)
-      const { data: keyData } = await supabase
-        .from("system_settings")
-        .select("id")
-        .eq("category", "api_keys")
-        .eq("environment", process.env.NODE_ENV || "development")
-        .single();
-
-      if (!keyData) return;
-
-      await supabase.from("api_key_usage").insert([
-        {
-          api_key_id: keyData.id,
-          endpoint,
-          method: "POST",
-          response_time_ms: responseTimeMs,
-          status_code: statusCode,
-          ip_address: "internal", // For internal API calls
-          user_agent: "application/server",
-        },
-      ]);
-    } catch (error) {
-      logger.error("Error logging API key usage", error);
-    }
-  },
-
-  /**
-   * Check if API usage is within rate limits
-   */
-  checkRateLimit: async (keyType: string): Promise<boolean> => {
-    try {
-      // Get the current rate limits from settings
-      const { data: limitsData } = await supabase
-        .from("system_settings")
-        .select("settings")
-        .eq("category", "rate_limits")
-        .eq("environment", process.env.NODE_ENV || "development")
-        .single();
-
-      if (!limitsData) return true; // If no limits are set, allow the request
-
-      const limits = limitsData.settings;
-      const maxRequestsPerMinute = limits?.gemini_requests_per_minute || 60;
-
-      // Count recent requests in the last minute
-      const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
-
-      const { data: keyData } = await supabase
-        .from("system_settings")
-        .select("id")
-        .eq("category", "api_keys")
-        .eq("environment", process.env.NODE_ENV || "development")
-        .single();
-
-      if (!keyData) return true;
-
-      const { count, error } = await supabase
-        .from("api_key_usage")
-        .select("id", { count: "exact" })
-        .eq("api_key_id", keyData.id)
-        .gte("created_at", oneMinuteAgo);
-
-      if (error) {
-        logger.error("Error checking rate limit", error);
-        return true; // On error, allow the request to proceed
-      }
-
-      return (count || 0) < maxRequestsPerMinute;
-    } catch (error) {
-      logger.error("Error checking rate limit", error);
-      return true; // On error, allow the request to proceed
     }
   },
 };

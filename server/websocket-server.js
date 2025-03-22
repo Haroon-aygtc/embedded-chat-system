@@ -1,7 +1,7 @@
 /**
  * Simple WebSocket server for development
  */
-import WebSocket from "ws";
+import { WebSocketServer } from "ws";
 import http from "http";
 
 // Create HTTP server
@@ -11,7 +11,7 @@ const server = http.createServer((req, res) => {
 });
 
 // Create WebSocket server instance
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocketServer({ server });
 
 // Track connected clients
 const clients = new Set();

@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
-import api from "@/services/apiService";
+import axios from "axios";
 
 const AuthDemo = () => {
   const [activeTab, setActiveTab] = useState("register");
@@ -31,7 +31,7 @@ const AuthDemo = () => {
     setSuccess("");
 
     try {
-      const response = await api.post("/auth/register", {
+      const response = await axios.post("/api/auth/register", {
         email,
         password,
         name,
@@ -60,7 +60,7 @@ const AuthDemo = () => {
     setSuccess("");
 
     try {
-      const response = await api.post("/auth/login", { email, password });
+      const response = await axios.post("/api/auth/login", { email, password });
       console.log("Login response:", response.data);
       setSuccess("Login successful!");
       // Store the token in localStorage
