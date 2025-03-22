@@ -27,6 +27,61 @@ app.get("/api/health", (req, res) => {
 
 // API Routes
 
+// Auth API
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const { email, password, name } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          name: name || email.split("@")[0],
+          role: "user",
+        },
+      },
+    });
+
+    if (error) throw error;
+
+    res.status(201).json({ success: true, user: data.user });
+  } catch (error) {
+    console.error("Error registering user:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) throw error;
+
+    res.status(200).json({
+      success: true,
+      user: data.user,
+      session: data.session,
+    });
+  } catch (error) {
+    console.error("Error logging in user:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Context Rules API
 app.get("/api/context-rules", async (req, res) => {
   try {
