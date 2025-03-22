@@ -30,6 +30,7 @@ const logger = {
 const servers = {
   websocket: null,
   frontend: null,
+  api: null,
 };
 
 // Check if the dist directory exists for production mode
@@ -192,9 +193,49 @@ function startFrontendServer() {
 // Flag to prevent restarting servers during shutdown
 let shuttingDown = false;
 
+// Start API server
+function startApiServer() {
+  logger.info(
+    "API",
+    `Starting server on port ${process.env.API_PORT || 3001}...`,
+  );
+
+  const apiServer = spawn("node", ["server/api-server.js"], {
+    env: { ...process.env },
+    stdio: "pipe",
+  });
+
+  servers.api = apiServer;
+
+  apiServer.stdout.on("data", (data) => {
+    logger.info("API", data.toString().trim());
+  });
+
+  apiServer.stderr.on("data", (data) => {
+    logger.error("API", data.toString().trim());
+  });
+
+  apiServer.on("error", (error) => {
+    logger.error("API", `Failed to start: ${error.message}`);
+  });
+
+  apiServer.on("close", (code) => {
+    logger.info("API", `Server exited with code ${code}`);
+
+    // Restart API server if it crashes in production
+    if (isProd && code !== 0 && !shuttingDown) {
+      logger.warn("API", "Server crashed. Restarting in 5 seconds...");
+      setTimeout(startApiServer, 5000);
+    }
+  });
+
+  return apiServer;
+}
+
 // Start all servers
 startWebSocketServer();
 startFrontendServer();
+startApiServer();
 
 // Handle process termination
 process.on("SIGINT", () => {

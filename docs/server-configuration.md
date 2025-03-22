@@ -17,7 +17,7 @@ const isProd = NODE_ENV === "production";
 
 ### 2. Server Types
 
-The unified server manages two main services:
+The unified server manages three main services:
 
 #### Frontend Server
 - **Development**: Uses Vite's dev server
@@ -28,6 +28,11 @@ The unified server manages two main services:
 - Handles real-time communication for the chat functionality
 - Implements heartbeat mechanism to detect and clean up broken connections
 
+#### API Server
+- Runs on a separate port (default: 3001)
+- Provides RESTful endpoints for non-real-time operations
+- Connects to Supabase for database operations
+
 ### 3. Configuration
 
 The server uses the following configuration with fallbacks:
@@ -35,6 +40,7 @@ The server uses the following configuration with fallbacks:
 ```javascript
 const VITE_PORT = process.env.PORT || 5173;
 const WS_PORT = process.env.WS_PORT || 8080;
+const API_PORT = process.env.API_PORT || 3001;
 const HOST = process.env.HOST || "0.0.0.0";
 ```
 
@@ -45,6 +51,7 @@ const HOST = process.env.HOST || "0.0.0.0";
 In development mode, the server starts:
 1. Vite dev server for the frontend
 2. WebSocket server for real-time communication
+3. API server for RESTful endpoints
 
 ```bash
 npm run dev:all
@@ -55,6 +62,7 @@ npm run dev:all
 In production mode, the server starts:
 1. Express static server for the frontend (serving from `dist` directory)
 2. WebSocket server for real-time communication
+3. API server for RESTful endpoints
 
 ```bash
 NODE_ENV=production node server.js
