@@ -20,6 +20,7 @@ const isProd = NODE_ENV === "production";
 // Configuration with fallbacks
 const VITE_PORT = process.env.PORT || 5173;
 const WS_PORT = process.env.WS_PORT || 8080;
+const API_PORT = process.env.API_PORT || 3001;
 const HOST = process.env.HOST || "0.0.0.0";
 
 // Logging utility

@@ -380,7 +380,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start the server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`API server running on port ${PORT}`);
 });
 
