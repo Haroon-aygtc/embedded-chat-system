@@ -2,7 +2,7 @@ import axios from "axios";
 import { ContextRule } from "@/types/contextRules";
 import { PromptTemplate } from "@/types/promptTemplates";
 import logger from "@/utils/logger";
-import knowledgeBaseService, { QueryResult } from "./knowledgeBaseService";
+import knowledgeBaseService from "./knowledgeBaseService";
 import supabase from "./supabaseClient";
 import apiKeyService from "./apiKeyService";
 import aiCacheService from "./aiCacheService";
@@ -58,17 +58,18 @@ async function initializeApiKeys() {
       logger.warn("Gemini API key not found in secure storage");
     }
 
-    // Load Hugging Face API key (implementation similar to Gemini)
-    // For now, fallback to environment variable if available
-    const huggingFaceApiKey = import.meta.env
-      .VITE_HUGGINGFACE_API_KEY as string;
+    // Load Hugging Face API key
+    const huggingFaceApiKey = await apiKeyService.getHuggingFaceApiKey();
     if (huggingFaceApiKey) {
       modelConfigs.huggingface.apiKey = huggingFaceApiKey;
     } else {
       logger.warn("Hugging Face API key not found");
     }
   } catch (error) {
-    logger.error("Error initializing API keys", error);
+    logger.error(
+      "Error initializing API keys",
+      error instanceof Error ? error : new Error(String(error)),
+    );
   }
 }
 
@@ -219,7 +220,10 @@ export const aiService = {
                 "I'm sorry, but I cannot provide that information based on the current context restrictions.";
             }
           } catch (error) {
-            logger.error("Invalid regex in response filter", error);
+            logger.error(
+              "Invalid regex in response filter",
+              error instanceof Error ? error : new Error(String(error)),
+            );
           }
         }
       });
@@ -235,8 +239,11 @@ export const aiService = {
    */
   generateGeminiResponse: async (prompt: string): Promise<AIModelResponse> => {
     // Check if we have a cached response
-    const cachedResponse = await aiCacheService.getCachedResponse(prompt);
-    if (cachedResponse && cachedResponse.modelUsed === "gemini") {
+    const cachedResponse = await aiCacheService.getCachedResponse(
+      prompt,
+      "gemini",
+    );
+    if (cachedResponse) {
       logger.info("Using cached Gemini response");
       return {
         content: cachedResponse.response,
@@ -323,7 +330,7 @@ export const aiService = {
             content,
             "gemini",
             metadata,
-            60, // Cache for 1 hour
+            3600, // Cache for 1 hour
           );
 
           return {
@@ -366,7 +373,10 @@ export const aiService = {
         statusCode,
       );
 
-      logger.error("Error generating Gemini response", error);
+      logger.error(
+        "Error generating Gemini response",
+        error instanceof Error ? error : new Error(String(error)),
+      );
       throw new Error(
         "Failed to generate response from Gemini: " +
           (error.message || "Unknown error"),
@@ -381,8 +391,11 @@ export const aiService = {
     prompt: string,
   ): Promise<AIModelResponse> => {
     // Check if we have a cached response
-    const cachedResponse = await aiCacheService.getCachedResponse(prompt);
-    if (cachedResponse && cachedResponse.modelUsed === "huggingface") {
+    const cachedResponse = await aiCacheService.getCachedResponse(
+      prompt,
+      "huggingface",
+    );
+    if (cachedResponse) {
       logger.info("Using cached Hugging Face response");
       return {
         content: cachedResponse.response,
@@ -414,9 +427,7 @@ export const aiService = {
 
     const config = modelConfigs.huggingface;
     // Default to a good general model if not specified
-    const model =
-      import.meta.env.VITE_HUGGINGFACE_MODEL ||
-      "mistralai/Mistral-7B-Instruct-v0.2";
+    const model = "mistralai/Mistral-7B-Instruct-v0.2";
     const url = `${config.endpoint}/${model}`;
 
     const startTime = Date.now();
@@ -473,7 +484,7 @@ export const aiService = {
             content,
             "huggingface",
             metadata,
-            60, // Cache for 1 hour
+            3600, // Cache for 1 hour
           );
 
           return {
@@ -516,7 +527,10 @@ export const aiService = {
         statusCode,
       );
 
-      logger.error("Error generating Hugging Face response", error);
+      logger.error(
+        "Error generating Hugging Face response",
+        error instanceof Error ? error : new Error(String(error)),
+      );
       throw new Error(
         "Failed to generate response from Hugging Face: " +
           (error.message || "Unknown error"),
@@ -562,7 +576,10 @@ export const aiService = {
 
       return response;
     } catch (error) {
-      logger.error(`Error with primary model ${primaryModel}`, error);
+      logger.error(
+        `Error with primary model ${primaryModel}`,
+        error instanceof Error ? error : new Error(String(error)),
+      );
 
       // Fallback to the other model
       const fallbackModel =
@@ -589,7 +606,9 @@ export const aiService = {
       } catch (fallbackError) {
         logger.error(
           `Error with fallback model ${fallbackModel}`,
-          fallbackError,
+          fallbackError instanceof Error
+            ? fallbackError
+            : new Error(String(fallbackError)),
         );
         throw new Error(
           "Failed to generate response from both primary and fallback AI models",
@@ -622,7 +641,10 @@ export const aiService = {
         logger.error("Error logging AI interaction", error);
       }
     } catch (error) {
-      logger.error("Error logging AI interaction", error);
+      logger.error(
+        "Error logging AI interaction",
+        error instanceof Error ? error : new Error(String(error)),
+      );
     }
   },
 };

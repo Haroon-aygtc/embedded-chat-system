@@ -23,7 +23,15 @@ export const env = {
   NODE_ENV: getEnv("NODE_ENV", "development"),
   MODE: getEnv("MODE", "development"),
 
-  // Supabase configuration
+  // MySQL configuration
+  MYSQL_URL: getEnv("MYSQL_URL"),
+  MYSQL_HOST: getEnv("MYSQL_HOST", "localhost"),
+  MYSQL_PORT: getEnv("MYSQL_PORT", "3306"),
+  MYSQL_USER: getEnv("MYSQL_USER"),
+  MYSQL_PASSWORD: getEnv("MYSQL_PASSWORD"),
+  MYSQL_DATABASE: getEnv("MYSQL_DATABASE"),
+
+  // Legacy Supabase configuration (for backward compatibility)
   SUPABASE_URL: getEnv("SUPABASE_URL"),
   SUPABASE_ANON_KEY: getEnv("SUPABASE_ANON_KEY"),
   SUPABASE_SERVICE_KEY: getEnv("SUPABASE_SERVICE_KEY"),

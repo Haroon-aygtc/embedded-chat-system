@@ -1,284 +1,321 @@
-import supabase from "./supabaseClient";
-import {
-  User,
-  LoginCredentials,
-  RegisterCredentials,
-  PasswordResetRequest,
-  PasswordResetConfirmation,
-  AuthResponse,
-  SupabaseAuthResponse,
-} from "@/types/auth";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { v4 as uuidv4 } from "uuid";
+import { User } from "@/models";
+import logger from "@/utils/logger";
+import { env } from "@/config/env";
+
+// JWT configuration
+const JWT_SECRET = env.JWT_SECRET;
+const JWT_EXPIRES_IN = env.JWT_EXPIRES_IN;
 
 /**
- * Converts a Supabase user to our application User type
- */
-const mapSupabaseUser = (supabaseUser: any): User => {
-  return {
-    id: supabaseUser.id,
-    email: supabaseUser.email,
-    name:
-      supabaseUser.user_metadata?.name ||
-      supabaseUser.email?.split("@")[0] ||
-      "User",
-    role: supabaseUser.user_metadata?.role || "user",
-    avatar:
-      supabaseUser.user_metadata?.avatar ||
-      `https://api.dicebear.com/7.x/avataaars/svg?seed=${supabaseUser.id}`,
-    metadata: supabaseUser.user_metadata,
-    lastLogin: supabaseUser.last_sign_in_at,
-    createdAt: supabaseUser.created_at,
-    updatedAt: supabaseUser.updated_at,
-  };
-};
-
-/**
- * Handle authentication errors and provide consistent error messages
- */
-const handleAuthError = (error: any): string => {
-  console.error("Auth error:", error);
-
-  // Map common Supabase error messages to user-friendly messages
-  if (error.message?.includes("Email not confirmed")) {
-    return "Please verify your email address before logging in";
-  }
-  if (error.message?.includes("Invalid login credentials")) {
-    return "Invalid email or password";
-  }
-  if (error.message?.includes("Email already registered")) {
-    return "An account with this email already exists";
-  }
-  if (error.message?.includes("Password should be")) {
-    return "Password must be at least 6 characters long";
-  }
-
-  return error.message || "An authentication error occurred";
-};
-
-/**
- * Authentication service for handling user authentication with Supabase
+ * Authentication service for user management
  */
 const authService = {
   /**
-   * Login a user with email and password
+   * Register a new user
+   * @param email User email
+   * @param password User password
+   * @param name User name (optional)
+   * @returns Created user object
    */
-  login: async ({
-    email,
-    password,
-  }: LoginCredentials): Promise<AuthResponse> => {
+  register: async (email: string, password: string, name?: string) => {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      // Check if user already exists
+      const existingUser = await User.findOne({ where: { email } });
+      if (existingUser) {
+        throw new Error("User with this email already exists");
+      }
+
+      // Hash password
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+
+      // Create user
+      const user = await User.create({
+        id: uuidv4(),
         email,
-        password,
+        full_name: name || email.split("@")[0],
+        role: "user",
+        is_active: true,
+        metadata: {
+          passwordHash: hashedPassword,
+        },
+        created_at: new Date(),
+        updated_at: new Date(),
       });
 
-      if (error) throw error;
-      if (!data.user) throw new Error("User not found");
+      // Remove sensitive data before returning
+      const userObj = user.get({ plain: true });
+      delete userObj.metadata.passwordHash;
 
-      const user = mapSupabaseUser(data.user);
-      const token = data.session?.access_token || "";
-
-      return { user, token, session: data.session };
+      return userObj;
     } catch (error) {
-      throw new Error(handleAuthError(error));
+      logger.error("Error registering user", error);
+      throw error;
     }
   },
 
   /**
-   * Register a new user
+   * Login a user
+   * @param email User email
+   * @param password User password
+   * @returns User object and JWT token
    */
-  register: async ({
-    email,
-    password,
-    name,
-  }: RegisterCredentials): Promise<void> => {
+  login: async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signUp({
-        email,
+      // Find user
+      const user = await User.findOne({ where: { email } });
+      if (!user) {
+        throw new Error("Invalid credentials");
+      }
+
+      // Check if user is active
+      if (!user.is_active) {
+        throw new Error("User account is disabled");
+      }
+
+      // Verify password
+      const isMatch = await bcrypt.compare(
         password,
-        options: {
-          data: {
-            name,
-            role: "user",
-            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
-          },
-        },
+        user.metadata?.passwordHash || "",
+      );
+
+      if (!isMatch) {
+        throw new Error("Invalid credentials");
+      }
+
+      // Update last login time
+      await user.update({
+        last_login_at: new Date(),
+        updated_at: new Date(),
       });
 
-      if (error) throw error;
+      // Generate JWT token
+      const token = jwt.sign(
+        {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+        },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRES_IN },
+      );
+
+      // Remove sensitive data before returning
+      const userObj = user.get({ plain: true });
+      delete userObj.metadata.passwordHash;
+
+      return {
+        user: userObj,
+        token,
+        session: {
+          access_token: token,
+          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        },
+      };
     } catch (error) {
-      throw new Error(handleAuthError(error));
+      logger.error("Error logging in user", error);
+      throw error;
     }
   },
 
   /**
    * Logout the current user
    */
-  logout: async (): Promise<void> => {
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-    } catch (error) {
-      console.error("Logout error:", error);
-      // We don't throw here as we want to clear local state regardless
-    }
+  logout: async () => {
+    // With JWT, logout is handled client-side by removing the token
+    return { success: true };
   },
 
   /**
    * Get the current authenticated user
+   * @param userId User ID
    */
-  getCurrentUser: async (): Promise<User | null> => {
+  getCurrentUser: async (userId: string) => {
     try {
-      const { data, error } = await supabase.auth.getUser();
-      if (error) throw error;
-      if (!data.user) return null;
+      const user = await User.findByPk(userId);
+      if (!user) {
+        return null;
+      }
 
-      return mapSupabaseUser(data.user);
+      // Remove sensitive data before returning
+      const userObj = user.get({ plain: true });
+      if (userObj.metadata?.passwordHash) {
+        delete userObj.metadata.passwordHash;
+      }
+
+      return userObj;
     } catch (error) {
-      console.error("Get current user error:", error);
+      logger.error("Error getting current user", error);
       return null;
     }
   },
 
   /**
-   * Get the current session
+   * Verify JWT token
+   * @param token JWT token
+   * @returns Decoded token payload
    */
-  getSession: async (): Promise<SupabaseAuthResponse> => {
+  verifyToken: (token: string) => {
     try {
-      const { data, error } = await supabase.auth.getSession();
-      return { user: data.session?.user || null, session: data.session, error };
+      return jwt.verify(token, JWT_SECRET);
     } catch (error) {
-      console.error("Get session error:", error);
-      return { user: null, session: null, error: error as Error };
+      logger.error("Error verifying token", error);
+      throw new Error("Invalid token");
     }
   },
 
   /**
-   * Request a password reset for a user
+   * Request password reset
+   * @param email User email
+   * @returns Success status
    */
-  requestPasswordReset: async ({
-    email,
-  }: PasswordResetRequest): Promise<void> => {
+  requestPasswordReset: async (email: string) => {
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/reset-password`,
+      const user = await User.findOne({ where: { email } });
+      if (!user) {
+        // Don't reveal that the user doesn't exist
+        return { success: true };
+      }
+
+      // Generate reset token
+      const resetToken = uuidv4();
+      const resetExpires = new Date();
+      resetExpires.setHours(resetExpires.getHours() + 1); // Token valid for 1 hour
+
+      // Update user metadata with reset token
+      const metadata = {
+        ...user.metadata,
+        resetToken,
+        resetExpires: resetExpires.toISOString(),
+      };
+
+      await user.update({
+        metadata,
+        updated_at: new Date(),
       });
-      if (error) throw error;
+
+      // In a real application, send an email with the reset link
+      // For now, just log it
+      logger.info(`Password reset token for ${email}: ${resetToken}`);
+
+      return { success: true };
     } catch (error) {
-      throw new Error(handleAuthError(error));
+      logger.error(`Error requesting password reset for ${email}`, error);
+      throw error;
     }
   },
 
   /**
-   * Reset a user's password with a reset token
+   * Reset password with token
+   * @param token Reset token
+   * @param newPassword New password
+   * @returns Success status
    */
-  resetPassword: async ({
-    newPassword,
-  }: PasswordResetConfirmation): Promise<void> => {
+  resetPassword: async (token: string, newPassword: string) => {
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-      if (error) throw error;
-    } catch (error) {
-      throw new Error(handleAuthError(error));
-    }
-  },
-
-  /**
-   * Update a user's profile
-   */
-  updateProfile: async (updates: Partial<User>): Promise<User> => {
-    try {
-      const { data, error } = await supabase.auth.updateUser({
-        data: {
-          name: updates.name,
-          avatar: updates.avatar,
-          ...updates.metadata,
+      // Find user with this reset token
+      const user = await User.findOne({
+        where: {
+          "metadata.resetToken": token,
         },
       });
 
-      if (error) throw error;
-      if (!data.user) throw new Error("User not found");
+      if (!user) {
+        throw new Error("Invalid or expired reset token");
+      }
 
-      return mapSupabaseUser(data.user);
+      // Check if token is expired
+      const resetExpires = new Date(user.metadata?.resetExpires || 0);
+      if (resetExpires < new Date()) {
+        throw new Error("Reset token has expired");
+      }
+
+      // Hash new password
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+      // Update user with new password and remove reset token
+      const metadata = { ...user.metadata, passwordHash: hashedPassword };
+      delete metadata.resetToken;
+      delete metadata.resetExpires;
+
+      await user.update({
+        metadata,
+        updated_at: new Date(),
+      });
+
+      return { success: true };
     } catch (error) {
-      throw new Error(handleAuthError(error));
+      logger.error("Error resetting password", error);
+      throw error;
     }
   },
 
   /**
-   * Change a user's email
+   * Update user profile
+   * @param userId User ID
+   * @param updates User profile updates
+   * @returns Updated user object
    */
-  changeEmail: async (newEmail: string): Promise<void> => {
+  updateProfile: async (userId: string, updates: any) => {
     try {
-      const { error } = await supabase.auth.updateUser({
-        email: newEmail,
-      });
-      if (error) throw error;
-    } catch (error) {
-      throw new Error(handleAuthError(error));
-    }
-  },
+      const user = await User.findByPk(userId);
+      if (!user) {
+        throw new Error("User not found");
+      }
 
-  /**
-   * Change a user's password
-   */
-  changePassword: async (newPassword: string): Promise<void> => {
-    try {
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-      if (error) throw error;
-    } catch (error) {
-      throw new Error(handleAuthError(error));
-    }
-  },
+      // Handle password update separately
+      if (updates.password) {
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(updates.password, salt);
 
-  /**
-   * Send a verification email to the current user
-   */
-  sendVerificationEmail: async (): Promise<void> => {
-    try {
-      const { data } = await supabase.auth.getUser();
-      if (!data.user) throw new Error("No user logged in");
+        // Update metadata with new password hash
+        const metadata = { ...user.metadata, passwordHash: hashedPassword };
+        updates.metadata = metadata;
+        delete updates.password;
+      }
 
-      // This is a workaround as Supabase doesn't have a direct method to resend verification
-      await supabase.auth.signInWithOtp({
-        email: data.user.email || "",
-      });
+      // Add updated_at timestamp
+      updates.updated_at = new Date();
+
+      // Update user
+      await user.update(updates);
+
+      // Refresh user from database
+      const updatedUser = await User.findByPk(userId);
+      if (!updatedUser) {
+        throw new Error("Failed to retrieve updated user");
+      }
+
+      // Remove sensitive data before returning
+      const userObj = updatedUser.get({ plain: true });
+      if (userObj.metadata?.passwordHash) {
+        delete userObj.metadata.passwordHash;
+      }
+
+      return userObj;
     } catch (error) {
-      throw new Error(handleAuthError(error));
+      logger.error(`Error updating user ${userId}`, error);
+      throw error;
     }
   },
 
   /**
    * Check if a user has a specific role
+   * @param userId User ID
+   * @param role Role to check
+   * @returns Boolean indicating if user has the role
    */
-  hasRole: async (role: string): Promise<boolean> => {
+  hasRole: async (userId: string, role: string) => {
     try {
-      const user = await authService.getCurrentUser();
+      const user = await User.findByPk(userId);
       return user?.role === role;
     } catch (error) {
+      logger.error(`Error checking role for user ${userId}`, error);
       return false;
-    }
-  },
-
-  /**
-   * Sign in with a third-party provider
-   */
-  signInWithProvider: async (
-    provider: "google" | "github" | "facebook",
-  ): Promise<void> => {
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-      if (error) throw error;
-    } catch (error) {
-      throw new Error(handleAuthError(error));
     }
   },
 };

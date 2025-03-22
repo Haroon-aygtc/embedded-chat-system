@@ -13,11 +13,14 @@ interface CacheEntry {
 /**
  * Service for caching AI responses to reduce API calls
  */
-export const aiCacheService = {
+const aiCacheService = {
   /**
    * Get a cached response if available
    */
-  getCachedResponse: async (prompt: string): Promise<CacheEntry | null> => {
+  getCachedResponse: async (
+    prompt: string,
+    model?: string,
+  ): Promise<CacheEntry | null> => {
     try {
       // Create a hash of the prompt for efficient lookup
       const promptHash = await createHash(prompt);
@@ -28,8 +31,9 @@ export const aiCacheService = {
         .from("ai_response_cache")
         .select("*")
         .eq("prompt_hash", promptHash)
+        .eq("model_used", model || "default")
         .gt("expires_at", now)
-        .single();
+        .maybeSingle();
 
       if (error || !data) {
         return null;
@@ -44,7 +48,10 @@ export const aiCacheService = {
         expiresAt: data.expires_at,
       };
     } catch (error) {
-      logger.error("Error getting cached response", error);
+      logger.error(
+        "Error getting cached response",
+        error instanceof Error ? error : new Error(String(error)),
+      );
       return null;
     }
   },
@@ -55,22 +62,23 @@ export const aiCacheService = {
   cacheResponse: async (
     prompt: string,
     response: string,
-    modelUsed: string,
+    model: string,
     metadata?: Record<string, any>,
-    ttlMinutes: number = 60, // Default TTL: 1 hour
+    ttlSeconds: number = 3600, // Default TTL: 1 hour
   ): Promise<boolean> => {
     try {
       // Create a hash of the prompt for efficient lookup
       const promptHash = await createHash(prompt);
 
       const now = new Date();
-      const expiresAt = new Date(now.getTime() + ttlMinutes * 60 * 1000);
+      const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
 
       // Check if entry already exists
       const { data: existingData } = await supabase
         .from("ai_response_cache")
         .select("id")
         .eq("prompt_hash", promptHash)
+        .eq("model_used", model)
         .single();
 
       if (existingData) {
@@ -79,7 +87,6 @@ export const aiCacheService = {
           .from("ai_response_cache")
           .update({
             response,
-            model_used: modelUsed,
             metadata,
             updated_at: now.toISOString(),
             expires_at: expiresAt.toISOString(),
@@ -97,7 +104,7 @@ export const aiCacheService = {
             prompt,
             prompt_hash: promptHash,
             response,
-            model_used: modelUsed,
+            model_used: model,
             metadata,
             created_at: now.toISOString(),
             updated_at: now.toISOString(),
@@ -113,7 +120,10 @@ export const aiCacheService = {
 
       return true;
     } catch (error) {
-      logger.error("Error caching response", error);
+      logger.error(
+        "Error caching response",
+        error instanceof Error ? error : new Error(String(error)),
+      );
       return false;
     }
   },
@@ -138,7 +148,10 @@ export const aiCacheService = {
 
       return data?.length || 0;
     } catch (error) {
-      logger.error("Error clearing expired cache", error);
+      logger.error(
+        "Error clearing expired cache",
+        error instanceof Error ? error : new Error(String(error)),
+      );
       return 0;
     }
   },
@@ -146,13 +159,21 @@ export const aiCacheService = {
   /**
    * Invalidate cache entries for a specific prompt or pattern
    */
-  invalidateCache: async (promptPattern: string): Promise<number> => {
+  invalidateCache: async (
+    promptPattern: string,
+    model?: string,
+  ): Promise<number> => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("ai_response_cache")
         .delete()
-        .ilike("prompt", `%${promptPattern}%`)
-        .select("id");
+        .ilike("prompt", `%${promptPattern}%`);
+
+      if (model) {
+        query = query.eq("model_used", model);
+      }
+
+      const { data, error } = await query.select("id");
 
       if (error) {
         logger.error("Error invalidating cache", error);
@@ -161,7 +182,10 @@ export const aiCacheService = {
 
       return data?.length || 0;
     } catch (error) {
-      logger.error("Error invalidating cache", error);
+      logger.error(
+        "Error invalidating cache",
+        error instanceof Error ? error : new Error(String(error)),
+      );
       return 0;
     }
   },

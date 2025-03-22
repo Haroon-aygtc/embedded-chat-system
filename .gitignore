@@ -27,3 +27,6 @@ dist-ssr
 
 .github/
 
+# Tempo files
+**/tempobook/dynamic/
+**/tempobook/storyboards/

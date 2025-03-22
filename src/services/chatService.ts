@@ -1,11 +1,10 @@
-import supabase from "./supabaseClient";
-import logger from "@/utils/logger";
-import realtimeService from "./realtimeService";
-import websocketService from "./websocketService";
-import moderationService from "./moderationService";
 import { v4 as uuidv4 } from "uuid";
+import { ChatMessage, ChatSession } from "@/models";
+import logger from "@/utils/logger";
+import moderationService from "./moderationService";
+import { getWebSocketService } from "./api/core/websocket";
 
-export interface ChatMessage {
+export interface ChatMessageInterface {
   id: string;
   sessionId: string;
   userId: string;
@@ -13,11 +12,11 @@ export interface ChatMessage {
   messageType: "user" | "system" | "ai";
   metadata?: Record<string, any>;
   createdAt: string;
-  attachments?: ChatAttachment[];
+  attachments?: ChatAttachmentInterface[];
   status?: "pending" | "delivered" | "read" | "moderated";
 }
 
-export interface ChatAttachment {
+export interface ChatAttachmentInterface {
   id: string;
   messageId: string;
   type: "image" | "file" | "audio" | "video";
@@ -28,7 +27,7 @@ export interface ChatAttachment {
   createdAt: string;
 }
 
-export interface ChatSession {
+export interface ChatSessionInterface {
   id: string;
   sessionId: string;
   userId: string;
@@ -51,30 +50,24 @@ class ChatService {
     userId: string,
     contextRuleId?: string,
     metadata?: Record<string, any>,
-  ): Promise<ChatSession | null> {
+  ): Promise<ChatSessionInterface | null> {
     try {
       const sessionId = uuidv4();
-      const now = new Date().toISOString();
+      const now = new Date();
 
-      const { data, error } = await supabase
-        .from("chat_sessions")
-        .insert({
-          id: uuidv4(),
-          session_id: sessionId,
-          user_id: userId,
-          context_rule_id: contextRuleId,
-          is_active: true,
-          metadata: metadata || {},
-          created_at: now,
-          updated_at: now,
-          last_message_at: now,
-        })
-        .select()
-        .single();
+      const session = await ChatSession.create({
+        id: uuidv4(),
+        session_id: sessionId,
+        user_id: userId,
+        context_rule_id: contextRuleId,
+        is_active: true,
+        metadata: metadata || {},
+        created_at: now,
+        updated_at: now,
+        last_message_at: now,
+      });
 
-      if (error) throw error;
-
-      return this.mapSessionFromDb(data);
+      return this.mapSessionFromDb(session);
     } catch (error) {
       logger.error(
         "Error creating chat session",
@@ -87,17 +80,15 @@ class ChatService {
   /**
    * Get a chat session by ID
    */
-  async getSession(sessionId: string): Promise<ChatSession | null> {
+  async getSession(sessionId: string): Promise<ChatSessionInterface | null> {
     try {
-      const { data, error } = await supabase
-        .from("chat_sessions")
-        .select("*")
-        .eq("session_id", sessionId)
-        .single();
+      const session = await ChatSession.findOne({
+        where: { session_id: sessionId },
+      });
 
-      if (error) throw error;
+      if (!session) return null;
 
-      return this.mapSessionFromDb(data);
+      return this.mapSessionFromDb(session);
     } catch (error) {
       logger.error(
         `Error fetching chat session ${sessionId}`,
@@ -113,23 +104,19 @@ class ChatService {
   async getUserSessions(
     userId: string,
     activeOnly = true,
-  ): Promise<ChatSession[]> {
+  ): Promise<ChatSessionInterface[]> {
     try {
-      let query = supabase
-        .from("chat_sessions")
-        .select("*")
-        .eq("user_id", userId)
-        .order("last_message_at", { ascending: false });
-
+      const query: any = { user_id: userId };
       if (activeOnly) {
-        query = query.eq("is_active", true);
+        query.is_active = true;
       }
 
-      const { data, error } = await query;
+      const sessions = await ChatSession.findAll({
+        where: query,
+        order: [["last_message_at", "DESC"]],
+      });
 
-      if (error) throw error;
-
-      return data.map(this.mapSessionFromDb);
+      return sessions.map((session) => this.mapSessionFromDb(session));
     } catch (error) {
       logger.error(
         `Error fetching user chat sessions for ${userId}`,
@@ -146,7 +133,7 @@ class ChatService {
     sessionId: string,
     updates: Partial<
       Omit<
-        ChatSession,
+        ChatSessionInterface,
         | "id"
         | "sessionId"
         | "userId"
@@ -155,7 +142,7 @@ class ChatService {
         | "lastMessageAt"
       >
     >,
-  ): Promise<ChatSession | null> {
+  ): Promise<ChatSessionInterface | null> {
     try {
       const updateData: Record<string, any> = {};
 
@@ -166,16 +153,19 @@ class ChatService {
       if (updates.metadata !== undefined)
         updateData.metadata = updates.metadata;
 
-      const { data, error } = await supabase
-        .from("chat_sessions")
-        .update(updateData)
-        .eq("session_id", sessionId)
-        .select()
-        .single();
+      updateData.updated_at = new Date();
 
-      if (error) throw error;
+      const session = await ChatSession.findOne({
+        where: { session_id: sessionId },
+      });
 
-      return this.mapSessionFromDb(data);
+      if (!session) {
+        throw new Error(`Chat session ${sessionId} not found`);
+      }
+
+      await session.update(updateData);
+
+      return this.mapSessionFromDb(session);
     } catch (error) {
       logger.error(
         `Error updating chat session ${sessionId}`,
@@ -194,8 +184,11 @@ class ChatService {
     message: string,
     messageType: "user" | "system" | "ai" = "user",
     metadata?: Record<string, any>,
-    attachments?: Omit<ChatAttachment, "id" | "messageId" | "createdAt">[],
-  ): Promise<ChatMessage | null> {
+    attachments?: Omit<
+      ChatAttachmentInterface,
+      "id" | "messageId" | "createdAt"
+    >[],
+  ): Promise<ChatMessageInterface | null> {
     try {
       // Check if the session exists
       const session = await this.getSession(sessionId);
@@ -235,80 +228,69 @@ class ChatService {
 
       // Generate a unique ID for the message
       const messageId = uuidv4();
-      const now = new Date().toISOString();
+      const now = new Date();
 
       // Prepare message data
       const messageData = {
         id: messageId,
         session_id: sessionId,
         user_id: userId,
-        message,
-        message_type: messageType,
+        content: message,
+        type: messageType,
         metadata: metadata || {},
         status: "pending",
         created_at: now,
       };
 
       // Insert the message
-      const { data, error } = await supabase
-        .from("chat_messages")
-        .insert(messageData)
-        .select()
-        .single();
-
-      if (error) throw error;
+      const chatMessage = await ChatMessage.create(messageData);
 
       // Process attachments if any
       if (attachments && attachments.length > 0) {
-        const attachmentInserts = attachments.map((attachment) => ({
-          id: uuidv4(),
-          message_id: messageId,
-          type: attachment.type,
-          url: attachment.url,
-          filename: attachment.filename,
-          filesize: attachment.filesize,
-          metadata: attachment.metadata || {},
-          created_at: now,
-        }));
-
-        const { error: attachmentError } = await supabase
-          .from("chat_attachments")
-          .insert(attachmentInserts);
-
-        if (attachmentError) {
-          logger.error(
-            `Error saving attachments for message ${messageId}`,
-            attachmentError instanceof Error
-              ? attachmentError
-              : new Error(String(attachmentError)),
-          );
-        }
+        // In MySQL implementation, we would handle attachments here
+        // This would require creating an Attachment model and table
+        logger.info(`Attachments handling not implemented yet for MySQL`);
       }
 
       // Update session's last_message_at
-      await supabase
-        .from("chat_sessions")
-        .update({ last_message_at: now, updated_at: now })
-        .eq("session_id", sessionId);
-
-      // Mark as delivered
-      await supabase
-        .from("chat_messages")
-        .update({ status: "delivered" })
-        .eq("id", messageId);
-
-      // Also send via WebSocket if available
-      this.sendMessageViaWebSocket(
-        sessionId,
-        userId,
-        message,
-        messageType,
-        metadata,
-        attachments,
+      await ChatSession.update(
+        { last_message_at: now, updated_at: now },
+        { where: { session_id: sessionId } },
       );
 
-      // Get the complete message with attachments
-      return this.getMessageById(messageId);
+      // Mark as delivered
+      await ChatMessage.update(
+        { status: "delivered" },
+        { where: { id: messageId } },
+      );
+
+      // Also send via WebSocket if available
+      try {
+        const websocketService = getWebSocketService();
+        websocketService.sendMessage({
+          type: "chat_message",
+          data: {
+            session_id: sessionId,
+            user_id: userId,
+            message,
+            message_type: messageType,
+            metadata: metadata || {},
+            attachments: attachments || [],
+            created_at: now.toISOString(),
+            status: "delivered",
+          },
+        });
+      } catch (error) {
+        logger.error(
+          "Error sending message via WebSocket",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+        // Continue execution - WebSocket is just for immediate delivery,
+        // the message is already saved in the database
+      }
+
+      // Get the complete message
+      return this.mapMessageFromDb(chatMessage);
     } catch (error) {
       logger.error(
         `Error sending message to session ${sessionId}`,
@@ -319,66 +301,29 @@ class ChatService {
   }
 
   /**
-   * Send a message via WebSocket for immediate delivery
-   */
-  private sendMessageViaWebSocket(
-    sessionId: string,
-    userId: string,
-    message: string,
-    messageType: "user" | "system" | "ai",
-    metadata?: Record<string, any>,
-    attachments?: Omit<ChatAttachment, "id" | "messageId" | "createdAt">[],
-  ): void {
-    try {
-      websocketService.sendMessage({
-        type: "chat_message",
-        data: {
-          session_id: sessionId,
-          user_id: userId,
-          message,
-          message_type: messageType,
-          metadata: metadata || {},
-          attachments: attachments || [],
-          created_at: new Date().toISOString(),
-          status: "delivered",
-        },
-      });
-    } catch (error) {
-      logger.error(
-        "Error sending message via WebSocket",
-        error instanceof Error ? error : new Error(String(error)),
-      );
-      // Continue execution - WebSocket is just for immediate delivery,
-      // the message is already saved in the database
-    }
-  }
-
-  /**
    * Get messages for a chat session
    */
   async getSessionMessages(
     sessionId: string,
     limit = 50,
     before?: string,
-  ): Promise<ChatMessage[]> {
+  ): Promise<ChatMessageInterface[]> {
     try {
-      let query = supabase
-        .from("chat_messages")
-        .select("*, chat_attachments(*)")
-        .eq("session_id", sessionId)
-        .order("created_at", { ascending: false })
-        .limit(limit);
-
+      const query: any = { session_id: sessionId };
       if (before) {
-        query = query.lt("created_at", before);
+        query.created_at = { $lt: before };
       }
 
-      const { data, error } = await query;
-
-      if (error) throw error;
+      const messages = await ChatMessage.findAll({
+        where: query,
+        order: [["created_at", "DESC"]],
+        limit,
+      });
 
       // Return in chronological order (oldest first)
-      return data.map(this.mapMessageWithAttachmentsFromDb).reverse();
+      return messages
+        .map((message) => this.mapMessageFromDb(message))
+        .reverse();
     } catch (error) {
       logger.error(
         `Error fetching messages for session ${sessionId}`,
@@ -391,17 +336,14 @@ class ChatService {
   /**
    * Get a message by ID
    */
-  async getMessageById(messageId: string): Promise<ChatMessage | null> {
+  async getMessageById(
+    messageId: string,
+  ): Promise<ChatMessageInterface | null> {
     try {
-      const { data, error } = await supabase
-        .from("chat_messages")
-        .select("*, chat_attachments(*)")
-        .eq("id", messageId)
-        .single();
+      const message = await ChatMessage.findByPk(messageId);
+      if (!message) return null;
 
-      if (error) throw error;
-
-      return this.mapMessageWithAttachmentsFromDb(data);
+      return this.mapMessageFromDb(message);
     } catch (error) {
       logger.error(
         `Error fetching message ${messageId}`,
@@ -421,25 +363,32 @@ class ChatService {
   ): Promise<boolean> {
     try {
       // Only mark messages that aren't from this user
-      const { error } = await supabase
-        .from("chat_messages")
-        .update({ status: "read" })
-        .in("id", messageIds)
-        .eq("session_id", sessionId)
-        .neq("user_id", userId);
-
-      if (error) throw error;
+      await ChatMessage.update(
+        { status: "read" },
+        {
+          where: {
+            id: messageIds,
+            session_id: sessionId,
+            user_id: { $ne: userId },
+          },
+        },
+      );
 
       // Notify via WebSocket that messages were read
-      websocketService.sendMessage({
-        type: "messages_read",
-        data: {
-          session_id: sessionId,
-          user_id: userId,
-          message_ids: messageIds,
-          timestamp: new Date().toISOString(),
-        },
-      });
+      try {
+        const websocketService = getWebSocketService();
+        websocketService.sendMessage({
+          type: "messages_read",
+          data: {
+            session_id: sessionId,
+            user_id: userId,
+            message_ids: messageIds,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } catch (error) {
+        logger.error("Error sending read status via WebSocket", error);
+      }
 
       return true;
     } catch (error) {
@@ -452,80 +401,9 @@ class ChatService {
   }
 
   /**
-   * Upload a file attachment
-   */
-  async uploadAttachment(
-    file: File,
-    sessionId: string,
-    userId: string,
-  ): Promise<{ url: string; filename: string; filesize: number } | null> {
-    try {
-      // Generate a unique filename
-      const fileExt = file.name.split(".").pop();
-      const filename = `${uuidv4()}.${fileExt}`;
-      const filePath = `attachments/${sessionId}/${filename}`;
-
-      // Upload to Supabase Storage
-      const { data, error } = await supabase.storage
-        .from("chat-attachments")
-        .upload(filePath, file, {
-          cacheControl: "3600",
-          upsert: false,
-        });
-
-      if (error) throw error;
-
-      // Get the public URL
-      const { data: urlData } = supabase.storage
-        .from("chat-attachments")
-        .getPublicUrl(filePath);
-
-      return {
-        url: urlData.publicUrl,
-        filename: file.name,
-        filesize: file.size,
-      };
-    } catch (error) {
-      logger.error(
-        `Error uploading attachment for session ${sessionId}`,
-        error instanceof Error ? error : new Error(String(error)),
-      );
-      return null;
-    }
-  }
-
-  /**
-   * Subscribe to new messages in a chat session
-   */
-  subscribeToMessages(
-    sessionId: string,
-    callback: (message: ChatMessage) => void,
-  ) {
-    return realtimeService.subscribeToChatMessages(sessionId, (payload) => {
-      if (payload.eventType === "INSERT") {
-        callback(this.mapMessageFromDb(payload.new));
-      }
-    });
-  }
-
-  /**
-   * Subscribe to changes in a chat session
-   */
-  subscribeToSession(
-    sessionId: string,
-    callback: (session: ChatSession) => void,
-  ) {
-    return realtimeService.subscribeToChatSession(sessionId, (payload) => {
-      if (payload.eventType === "UPDATE") {
-        callback(this.mapSessionFromDb(payload.new));
-      }
-    });
-  }
-
-  /**
    * Map database object to ChatSession
    */
-  private mapSessionFromDb(data: any): ChatSession {
+  private mapSessionFromDb(data: any): ChatSessionInterface {
     return {
       id: data.id,
       sessionId: data.session_id,
@@ -533,49 +411,38 @@ class ChatService {
       contextRuleId: data.context_rule_id,
       isActive: data.is_active,
       metadata: data.metadata,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
-      lastMessageAt: data.last_message_at,
+      createdAt:
+        data.created_at instanceof Date
+          ? data.created_at.toISOString()
+          : data.created_at,
+      updatedAt:
+        data.updated_at instanceof Date
+          ? data.updated_at.toISOString()
+          : data.updated_at,
+      lastMessageAt:
+        data.last_message_at instanceof Date
+          ? data.last_message_at.toISOString()
+          : data.last_message_at,
     };
   }
 
   /**
    * Map database object to ChatMessage
    */
-  private mapMessageFromDb(data: any): ChatMessage {
+  private mapMessageFromDb(data: any): ChatMessageInterface {
     return {
       id: data.id,
       sessionId: data.session_id,
       userId: data.user_id,
-      message: data.message,
-      messageType: data.message_type,
+      message: data.content,
+      messageType: data.type,
       metadata: data.metadata,
       status: data.status,
-      createdAt: data.created_at,
+      createdAt:
+        data.created_at instanceof Date
+          ? data.created_at.toISOString()
+          : data.created_at,
     };
-  }
-
-  /**
-   * Map database object to ChatMessage with attachments
-   */
-  private mapMessageWithAttachmentsFromDb(data: any): ChatMessage {
-    const message = this.mapMessageFromDb(data);
-
-    // Add attachments if they exist
-    if (data.chat_attachments && Array.isArray(data.chat_attachments)) {
-      message.attachments = data.chat_attachments.map((attachment: any) => ({
-        id: attachment.id,
-        messageId: attachment.message_id,
-        type: attachment.type,
-        url: attachment.url,
-        filename: attachment.filename,
-        filesize: attachment.filesize,
-        metadata: attachment.metadata,
-        createdAt: attachment.created_at,
-      }));
-    }
-
-    return message;
   }
 }
 
