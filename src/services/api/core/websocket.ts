@@ -5,44 +5,78 @@
  */
 
 import {
-  WebSocketConfig,
   ConnectionState,
+  WebSocketConfig,
   WebSocketStats,
 } from "@/types/websocket";
+import { env } from "@/config/env";
 import logger from "@/utils/logger";
 
-type MessageCallback = (data: any) => void;
-type ConnectionCallback = () => void;
+// WebSocket message types
+export enum MessageType {
+  PING = "ping",
+  PONG = "pong",
+  AUTH = "auth",
+  AUTH_RESPONSE = "auth_response",
+  CHAT = "chat",
+  SYSTEM = "system",
+  ERROR = "error",
+  ECHO = "echo",
+}
 
-class WebSocketService {
+// WebSocket message interface
+export interface WebSocketMessage {
+  type: MessageType | string;
+  payload?: any;
+  timestamp?: string;
+  clientId?: string;
+  sentAt?: string;
+}
+
+// Message handler type
+type MessageHandler = (message: WebSocketMessage) => void;
+
+/**
+ * WebSocket service for real-time communication
+ */
+export class WebSocketService {
   private socket: WebSocket | null = null;
-  private messageCallbacks: Set<MessageCallback> = new Set();
-  private connectCallbacks: Set<ConnectionCallback> = new Set();
-  private disconnectCallbacks: Set<ConnectionCallback> = new Set();
+  private messageHandlers: Set<MessageHandler> = new Set();
+  private connectCallbacks: Set<() => void> = new Set();
+  private disconnectCallbacks: Set<() => void> = new Set();
   private reconnectAttempts = 0;
-  private messageQueue: any[] = [];
+  private messageQueue: WebSocketMessage[] = [];
   private connectionState: ConnectionState = ConnectionState.DISCONNECTED;
   private reconnectTimeout: number | null = null;
   private heartbeatInterval: number | null = null;
   private lastMessageTimestamp = 0;
   private messageCountLastMinute = 0;
   private messageCountResetInterval: number | null = null;
-  private config: WebSocketConfig = {
-    url: import.meta.env.VITE_WEBSOCKET_URL || "ws://localhost:8080",
-    autoReconnect: true,
-    maxReconnectAttempts: 5,
-    heartbeatIntervalMs: 30000,
-    heartbeatTimeoutMs: 5000,
-    maxQueueSize: 50,
-    debug: false,
-    connectionTimeout: 10000,
-    rateLimitPerSecond: 10,
-  };
+  private clientId: string;
+  private config: WebSocketConfig;
 
+  /**
+   * Create a new WebSocketService instance
+   * @param config WebSocket configuration
+   */
   constructor(config?: Partial<WebSocketConfig>) {
-    if (config) {
-      this.config = { ...this.config, ...config };
-    }
+    this.clientId = this.generateClientId();
+
+    // Default configuration
+    this.config = {
+      url: env.WS_PORT
+        ? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.hostname}:${env.WS_PORT}`
+        : "ws://localhost:8080",
+      autoReconnect: true,
+      maxReconnectAttempts: 5,
+      heartbeatIntervalMs: 30000,
+      heartbeatTimeoutMs: 5000,
+      maxQueueSize: 50,
+      debug: false,
+      connectionTimeout: 10000,
+      rateLimitPerSecond: 10,
+      ...config,
+    };
 
     // Set up message count reset interval
     this.messageCountResetInterval = window.setInterval(() => {
@@ -52,102 +86,118 @@ class WebSocketService {
 
   /**
    * Connect to the WebSocket server
+   * @returns Promise that resolves when connected
    */
-  connect(): boolean {
-    if (
-      this.socket &&
-      (this.socket.readyState === WebSocket.OPEN ||
-        this.socket.readyState === WebSocket.CONNECTING)
-    ) {
-      return true;
-    }
+  public connect(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (
+        this.socket &&
+        (this.socket.readyState === WebSocket.OPEN ||
+          this.socket.readyState === WebSocket.CONNECTING)
+      ) {
+        resolve();
+        return;
+      }
 
-    try {
-      this.connectionState = ConnectionState.CONNECTING;
-      this.socket = new WebSocket(this.config.url);
+      try {
+        this.connectionState = ConnectionState.CONNECTING;
+        this.socket = new WebSocket(this.config.url);
 
-      // Set up connection timeout
-      const connectionTimeout = window.setTimeout(() => {
-        if (this.connectionState === ConnectionState.CONNECTING) {
-          this.connectionState = ConnectionState.FAILED;
-          this.socket?.close();
-          this.socket = null;
-          this.handleReconnect();
-        }
-      }, this.config.connectionTimeout);
+        // Set up connection timeout
+        const connectionTimeout = window.setTimeout(() => {
+          if (this.connectionState === ConnectionState.CONNECTING) {
+            this.connectionState = ConnectionState.FAILED;
+            this.socket?.close();
+            this.socket = null;
+            this.handleReconnect();
+            reject(new Error("Connection timeout"));
+          }
+        }, this.config.connectionTimeout);
 
-      this.socket.onopen = () => {
-        clearTimeout(connectionTimeout);
-        this.connectionState = ConnectionState.CONNECTED;
-        this.reconnectAttempts = 0;
-        this.processQueue();
-        this.startHeartbeat();
+        this.socket.onopen = () => {
+          clearTimeout(connectionTimeout);
+          this.connectionState = ConnectionState.CONNECTED;
+          this.reconnectAttempts = 0;
+          this.processQueue();
+          this.startHeartbeat();
 
-        // Notify all connect callbacks
-        this.connectCallbacks.forEach((callback) => callback());
-
-        if (this.config.debug) {
-          logger.info("WebSocket connected");
-        }
-      };
-
-      this.socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          this.lastMessageTimestamp = Date.now();
-
-          // Notify all message callbacks
-          this.messageCallbacks.forEach((callback) => callback(data));
+          // Notify all connect callbacks
+          this.connectCallbacks.forEach((callback) => callback());
 
           if (this.config.debug) {
-            logger.info("WebSocket message received", data);
+            logger.info("WebSocket connected");
           }
-        } catch (error) {
-          logger.error("Error parsing WebSocket message", error);
-        }
-      };
 
-      this.socket.onclose = () => {
-        clearTimeout(connectionTimeout);
-        if (this.connectionState !== ConnectionState.FAILED) {
-          this.connectionState = ConnectionState.DISCONNECTED;
-        }
-        this.stopHeartbeat();
+          resolve();
+        };
 
-        // Notify all disconnect callbacks
-        this.disconnectCallbacks.forEach((callback) => callback());
+        this.socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            this.lastMessageTimestamp = Date.now();
 
-        if (this.config.debug) {
-          logger.info("WebSocket disconnected");
-        }
+            // Notify all message handlers
+            this.messageHandlers.forEach((handler) => handler(data));
 
-        this.handleReconnect();
-      };
+            if (this.config.debug) {
+              logger.info("WebSocket message received", { extra: data });
+            }
+          } catch (error) {
+            logger.error("Error parsing WebSocket message", error);
+          }
+        };
 
-      this.socket.onerror = (error) => {
-        logger.error("WebSocket error", error);
-        if (this.connectionState === ConnectionState.CONNECTING) {
+        this.socket.onclose = (event) => {
           clearTimeout(connectionTimeout);
-          this.connectionState = ConnectionState.FAILED;
-          this.socket?.close();
-          this.socket = null;
-          this.handleReconnect();
-        }
-      };
+          if (this.connectionState !== ConnectionState.FAILED) {
+            this.connectionState = ConnectionState.DISCONNECTED;
+          }
+          this.stopHeartbeat();
 
-      return true;
-    } catch (error) {
-      this.connectionState = ConnectionState.FAILED;
-      logger.error("Error connecting to WebSocket", error);
-      this.handleReconnect();
-      return false;
-    }
+          // Notify all disconnect callbacks
+          this.disconnectCallbacks.forEach((callback) => callback());
+
+          if (this.config.debug) {
+            logger.info(
+              `WebSocket disconnected: ${event.code} ${event.reason}`,
+            );
+          }
+
+          this.handleReconnect();
+
+          if (this.connectionState === ConnectionState.CONNECTING) {
+            reject(
+              new Error(
+                `WebSocket closed during connection: ${event.code} ${event.reason}`,
+              ),
+            );
+          }
+        };
+
+        this.socket.onerror = (error) => {
+          logger.error("WebSocket error", error);
+          if (this.connectionState === ConnectionState.CONNECTING) {
+            clearTimeout(connectionTimeout);
+            this.connectionState = ConnectionState.FAILED;
+            this.socket?.close();
+            this.socket = null;
+            this.handleReconnect();
+            reject(error);
+          }
+        };
+      } catch (error) {
+        this.connectionState = ConnectionState.FAILED;
+        logger.error("Error connecting to WebSocket", error);
+        this.handleReconnect();
+        reject(error);
+      }
+    });
   }
 
   /**
    * Disconnect from the WebSocket server
    */
-  disconnect(): void {
+  public disconnect(): void {
     this.stopHeartbeat();
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
@@ -155,7 +205,7 @@ class WebSocketService {
     }
 
     if (this.socket) {
-      this.socket.close();
+      this.socket.close(1000, "Client disconnected");
       this.socket = null;
     }
 
@@ -167,48 +217,70 @@ class WebSocketService {
 
   /**
    * Send a message to the WebSocket server
+   * @param message Message to send
+   * @returns Promise that resolves when the message is sent
    */
-  sendMessage(message: any): boolean {
-    // Rate limiting
-    this.messageCountLastMinute++;
-    if (this.messageCountLastMinute > this.config.rateLimitPerSecond * 60) {
-      logger.warn("WebSocket message rate limit exceeded");
-      return false;
-    }
-
-    if (this.isConnected()) {
-      try {
-        this.socket?.send(JSON.stringify(message));
-        if (this.config.debug) {
-          logger.info("WebSocket message sent", message);
-        }
-        return true;
-      } catch (error) {
-        logger.error("Error sending WebSocket message", error);
-        this.queueMessage(message);
-        return false;
+  public send(message: WebSocketMessage): Promise<void> {
+    return new Promise((resolve, reject) => {
+      // Rate limiting
+      this.messageCountLastMinute++;
+      if (this.messageCountLastMinute > this.config.rateLimitPerSecond * 60) {
+        logger.warn("WebSocket message rate limit exceeded");
+        reject(new Error("Rate limit exceeded"));
+        return;
       }
-    } else {
-      this.queueMessage(message);
-      this.connect();
-      return false;
-    }
+
+      if (this.isConnected()) {
+        try {
+          // Add client ID and timestamp if not provided
+          const enrichedMessage: WebSocketMessage = {
+            ...message,
+            clientId: message.clientId || this.clientId,
+            timestamp: message.timestamp || new Date().toISOString(),
+          };
+
+          this.socket?.send(JSON.stringify(enrichedMessage));
+
+          if (this.config.debug) {
+            logger.info("WebSocket message sent", { extra: enrichedMessage });
+          }
+
+          resolve();
+        } catch (error) {
+          logger.error("Error sending WebSocket message", error);
+          this.queueMessage(message);
+          reject(error);
+        }
+      } else {
+        this.queueMessage(message);
+        this.connect().catch(reject);
+        resolve(); // Resolve anyway since the message is queued
+      }
+    });
   }
 
   /**
-   * Register a callback for WebSocket messages
+   * Add a message handler
+   * @param handler Message handler function
    */
-  onMessage(callback: MessageCallback): () => void {
-    this.messageCallbacks.add(callback);
-    return () => {
-      this.messageCallbacks.delete(callback);
-    };
+  public addMessageHandler(handler: MessageHandler): void {
+    this.messageHandlers.add(handler);
   }
 
   /**
-   * Register a callback for WebSocket connection
+   * Remove a message handler
+   * @param handler Message handler function to remove
    */
-  onConnect(callback: ConnectionCallback): () => void {
+  public removeMessageHandler(handler: MessageHandler): void {
+    this.messageHandlers.delete(handler);
+  }
+
+  /**
+   * Add a connect callback
+   * @param callback Connect callback function
+   * @returns Function to remove the callback
+   */
+  public onConnect(callback: () => void): () => void {
     this.connectCallbacks.add(callback);
     return () => {
       this.connectCallbacks.delete(callback);
@@ -216,9 +288,11 @@ class WebSocketService {
   }
 
   /**
-   * Register a callback for WebSocket disconnection
+   * Add a disconnect callback
+   * @param callback Disconnect callback function
+   * @returns Function to remove the callback
    */
-  onDisconnect(callback: ConnectionCallback): () => void {
+  public onDisconnect(callback: () => void): () => void {
     this.disconnectCallbacks.add(callback);
     return () => {
       this.disconnectCallbacks.delete(callback);
@@ -227,22 +301,25 @@ class WebSocketService {
 
   /**
    * Check if the WebSocket is connected
+   * @returns Boolean indicating if the WebSocket is connected
    */
-  isConnected(): boolean {
+  public isConnected(): boolean {
     return this.socket !== null && this.socket.readyState === WebSocket.OPEN;
   }
 
   /**
    * Get the current connection state
+   * @returns Current connection state
    */
-  getConnectionState(): ConnectionState {
+  public getConnectionState(): ConnectionState {
     return this.connectionState;
   }
 
   /**
    * Get WebSocket statistics
+   * @returns WebSocket statistics
    */
-  getStats(): WebSocketStats {
+  public getStats(): WebSocketStats {
     return {
       connectionState: this.connectionState,
       queuedMessages: this.messageQueue.length,
@@ -259,15 +336,18 @@ class WebSocketService {
 
   /**
    * Queue a message to be sent when the connection is established
+   * @param message Message to queue
    */
-  private queueMessage(message: any): void {
+  private queueMessage(message: WebSocketMessage): void {
     if (this.messageQueue.length < this.config.maxQueueSize) {
       this.messageQueue.push(message);
       if (this.config.debug) {
-        logger.info("WebSocket message queued", message);
+        logger.info("WebSocket message queued", { extra: message });
       }
     } else {
-      logger.warn("WebSocket message queue full, dropping message", message);
+      logger.warn("WebSocket message queue full, dropping message", {
+        extra: message,
+      });
     }
   }
 
@@ -280,7 +360,9 @@ class WebSocketService {
       this.messageQueue = [];
 
       queueCopy.forEach((message) => {
-        this.sendMessage(message);
+        this.send(message).catch((error) => {
+          logger.error("Error sending queued message", error);
+        });
       });
 
       if (this.config.debug) {
@@ -300,19 +382,24 @@ class WebSocketService {
       this.connectionState = ConnectionState.RECONNECTING;
       this.reconnectAttempts++;
 
-      const backoffTime = Math.min(
+      // Exponential backoff with jitter
+      const baseBackoff = Math.min(
         1000 * Math.pow(2, this.reconnectAttempts - 1),
-        30000,
+        30000, // Max 30 seconds
       );
+      const jitter = 0.1 * baseBackoff * Math.random(); // 10% jitter
+      const backoffTime = baseBackoff + jitter;
 
       if (this.config.debug) {
         logger.info(
-          `WebSocket reconnecting in ${backoffTime}ms (attempt ${this.reconnectAttempts}/${this.config.maxReconnectAttempts})`,
+          `WebSocket reconnecting in ${Math.round(backoffTime)}ms (attempt ${this.reconnectAttempts}/${this.config.maxReconnectAttempts})`,
         );
       }
 
       this.reconnectTimeout = window.setTimeout(() => {
-        this.connect();
+        this.connect().catch((error) => {
+          logger.error("Error reconnecting to WebSocket", error);
+        });
       }, backoffTime);
     } else if (this.reconnectAttempts >= this.config.maxReconnectAttempts) {
       this.connectionState = ConnectionState.FAILED;
@@ -329,10 +416,11 @@ class WebSocketService {
     this.stopHeartbeat();
     this.heartbeatInterval = window.setInterval(() => {
       if (this.isConnected()) {
-        this.sendMessage({
-          type: "ping",
-          sentAt: Date.now(),
-          timestamp: new Date().toISOString(),
+        this.send({
+          type: MessageType.PING,
+          sentAt: new Date().toISOString(),
+        }).catch((error) => {
+          logger.error("Error sending heartbeat", error);
         });
       }
     }, this.config.heartbeatIntervalMs);
@@ -349,11 +437,19 @@ class WebSocketService {
   }
 
   /**
+   * Generate a unique client ID
+   * @returns Unique client ID
+   */
+  private generateClientId(): string {
+    return `client_${Math.random().toString(36).substring(2, 15)}_${Date.now().toString(36)}`;
+  }
+
+  /**
    * Clean up resources
    */
-  destroy(): void {
+  public destroy(): void {
     this.disconnect();
-    this.messageCallbacks.clear();
+    this.messageHandlers.clear();
     this.connectCallbacks.clear();
     this.disconnectCallbacks.clear();
     if (this.messageCountResetInterval) {
@@ -364,7 +460,33 @@ class WebSocketService {
 }
 
 // Create a singleton instance
-const websocketService = new WebSocketService();
+let websocketInstance: WebSocketService | null = null;
 
+/**
+ * Get the WebSocket service instance
+ * @param config Optional WebSocket configuration
+ * @returns WebSocket service instance
+ */
+export const getWebSocketService = (
+  config?: Partial<WebSocketConfig>,
+): WebSocketService => {
+  if (!websocketInstance) {
+    websocketInstance = new WebSocketService(config);
+  }
+  return websocketInstance;
+};
+
+/**
+ * Reset the WebSocket service instance
+ */
+export const resetWebSocketService = (): void => {
+  if (websocketInstance) {
+    websocketInstance.destroy();
+    websocketInstance = null;
+  }
+};
+
+// Export a default instance
+const websocketService = getWebSocketService();
 export { websocketService };
 export default websocketService;
