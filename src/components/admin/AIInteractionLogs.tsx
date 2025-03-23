@@ -27,8 +27,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Search, Download, Filter, Calendar } from "lucide-react";
-import supabase from "@/services/supabaseClient";
+import aiService from "@/services/aiService";
 import { format } from "date-fns";
+import { getMySQLClient } from "@/services/mysqlClient";
+import logger from "@/utils/logger";
 
 interface AIInteractionLog {
   id: string;
@@ -75,13 +77,14 @@ const AIInteractionLogs = () => {
   const fetchContextRules = async () => {
     try {
       setError(null);
-      const { data, error } = await supabase
-        .from("context_rules")
-        .select("id, name")
-        .order("name");
+      const sequelize = await getMySQLClient();
 
-      if (error) throw error;
-      setContextRules(data || []);
+      const contextRulesData = await sequelize.query(
+        `SELECT id, name FROM context_rules ORDER BY name`,
+        { type: sequelize.QueryTypes.SELECT },
+      );
+
+      setContextRules(contextRulesData as { id: string; name: string }[]);
     } catch (error) {
       console.error("Error fetching context rules:", error);
       setError("Failed to load context rules. Please try again.");
@@ -92,56 +95,28 @@ const AIInteractionLogs = () => {
     setLoading(true);
     setError(null);
     try {
-      let query = supabase
-        .from("ai_interaction_logs")
-        .select("*, context_rule:context_rule_id(name)", { count: "exact" })
-        .order("created_at", { ascending: false });
+      // Build query parameters
+      const params: any = {
+        page,
+        pageSize,
+        query: searchTerm || undefined,
+        modelUsed: modelFilter || undefined,
+        contextRuleId: contextFilter || undefined,
+        startDate: dateRange.from ? dateRange.from.toISOString() : undefined,
+        endDate: dateRange.to ? dateRange.to.toISOString() : undefined,
+      };
 
-      // Apply filters
-      if (searchTerm) {
-        query = query.or(
-          `query.ilike.%${searchTerm}%,response.ilike.%${searchTerm}%`,
-        );
-      }
+      // Fetch logs using aiService
+      const result = await aiService.getAIInteractionLogs(params);
 
-      if (modelFilter) {
-        query = query.eq("model_used", modelFilter);
-      }
-
-      if (contextFilter) {
-        if (contextFilter === "null") {
-          query = query.is("context_rule_id", null);
-        } else {
-          query = query.eq("context_rule_id", contextFilter);
-        }
-      }
-
-      if (dateRange.from) {
-        query = query.gte("created_at", dateRange.from.toISOString());
-      }
-
-      if (dateRange.to) {
-        // Add one day to include the end date fully
-        const endDate = new Date(dateRange.to);
-        endDate.setDate(endDate.getDate() + 1);
-        query = query.lt("created_at", endDate.toISOString());
-      }
-
-      // Add pagination
-      const from = (page - 1) * pageSize;
-      const to = from + pageSize - 1;
-      query = query.range(from, to);
-
-      const { data, error, count } = await query;
-
-      if (error) throw error;
-
-      setLogs(data || []);
-      setTotalPages(Math.ceil((count || 0) / pageSize));
+      setLogs(result.logs || []);
+      setTotalPages(result.totalPages);
 
       // Extract unique models for filtering
-      if (data && data.length > 0) {
-        const models = [...new Set(data.map((log) => log.model_used))];
+      if (result.logs && result.logs.length > 0) {
+        const models = [
+          ...new Set(result.logs.map((log: any) => log.model_used)),
+        ];
         setAvailableModels(models);
       }
     } catch (error) {
@@ -164,57 +139,77 @@ const AIInteractionLogs = () => {
       setExportLoading(true);
       setError(null);
 
-      // Fetch all logs with current filters but no pagination
-      let query = supabase
-        .from("ai_interaction_logs")
-        .select("*, context_rule:context_rule_id(name)")
-        .order("created_at", { ascending: false });
+      // Get MySQL client
+      const sequelize = await getMySQLClient();
 
-      // Apply the same filters as the current view
+      // Build query conditions
+      const conditions = [];
+      const replacements: any[] = [];
+
       if (searchTerm) {
-        query = query.or(
-          `query.ilike.%${searchTerm}%,response.ilike.%${searchTerm}%`,
-        );
+        conditions.push("(l.query LIKE ? OR l.response LIKE ?)");
+        replacements.push(`%${searchTerm}%`, `%${searchTerm}%`);
       }
 
       if (modelFilter) {
-        query = query.eq("model_used", modelFilter);
+        conditions.push("l.model_used = ?");
+        replacements.push(modelFilter);
       }
 
       if (contextFilter) {
         if (contextFilter === "null") {
-          query = query.is("context_rule_id", null);
+          conditions.push("l.context_rule_id IS NULL");
         } else {
-          query = query.eq("context_rule_id", contextFilter);
+          conditions.push("l.context_rule_id = ?");
+          replacements.push(contextFilter);
         }
       }
 
       if (dateRange.from) {
-        query = query.gte("created_at", dateRange.from.toISOString());
+        conditions.push("l.created_at >= ?");
+        replacements.push(dateRange.from.toISOString());
       }
 
       if (dateRange.to) {
         const endDate = new Date(dateRange.to);
         endDate.setDate(endDate.getDate() + 1);
-        query = query.lt("created_at", endDate.toISOString());
+        conditions.push("l.created_at < ?");
+        replacements.push(endDate.toISOString());
       }
 
-      const { data, error } = await query;
+      const whereClause =
+        conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-      if (error) throw error;
+      try {
+        // Execute query
+        const logs = await sequelize.query(
+          `SELECT l.*, c.name as context_rule_name 
+           FROM ai_interaction_logs l
+           LEFT JOIN context_rules c ON l.context_rule_id = c.id
+           ${whereClause} 
+           ORDER BY l.created_at DESC`,
+          {
+            replacements,
+            type: sequelize.QueryTypes.SELECT,
+          },
+        );
 
-      if (data && data.length > 0) {
+        if (!logs || logs.length === 0) {
+          setError("No data available to export with the current filters.");
+          setExportLoading(false);
+          return;
+        }
         // Format data for CSV
-        const csvData = data.map((log) => ({
+        const csvData = logs.map((log: any) => ({
           id: log.id,
           user_id: log.user_id,
           query: log.query,
           response: log.response,
           model_used: log.model_used,
-          context_rule: log.context_rule?.name || "None",
+          context_rule: log.context_rule_name || "None",
           knowledge_base_results: log.knowledge_base_results || 0,
-          knowledge_base_ids: Array.isArray(log.knowledge_base_ids)
-            ? log.knowledge_base_ids.join(";")
+          knowledge_base_ids: log.knowledge_base_ids
+            ? log.knowledge_base_ids.split(",").join(";")
             : "",
           created_at: log.created_at,
         }));
@@ -258,8 +253,9 @@ const AIInteractionLogs = () => {
 
         // Clean up the URL object
         setTimeout(() => URL.revokeObjectURL(url), 100);
-      } else {
-        setError("No data available to export with the current filters.");
+      } catch (queryError) {
+        logger.error("Error executing export query:", queryError);
+        setError("Error executing export query. Please try again.");
       }
     } catch (error) {
       console.error("Error exporting logs:", error);
@@ -408,7 +404,7 @@ const AIInteractionLogs = () => {
                 ) : logs.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-4">
-                      No logs found
+                      No data available
                     </TableCell>
                   </TableRow>
                 ) : (

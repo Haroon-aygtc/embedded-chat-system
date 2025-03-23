@@ -1,6 +1,5 @@
 import { getMySQLClient } from "./mysqlClient";
 import logger from "@/utils/logger";
-import { AIResponseCache } from "@/models";
 
 interface CacheEntry {
   prompt: string;
@@ -27,17 +26,17 @@ const aiCacheService = {
       const promptHash = await createHash(prompt);
 
       const now = new Date();
+      const sequelize = getMySQLClient();
 
       // Find cache entry in database
-      const cacheEntry = await AIResponseCache.findOne({
-        where: {
-          prompt_hash: promptHash,
-          model_used: model || "default",
-          expires_at: {
-            [Symbol.for("gt")]: now,
-          },
+      const [cacheEntry] = await sequelize.query(
+        `SELECT * FROM ai_response_cache 
+         WHERE prompt_hash = ? AND model_used = ? AND expires_at > ?`,
+        {
+          replacements: [promptHash, model || "default", now],
+          type: sequelize.QueryTypes.SELECT,
         },
-      });
+      );
 
       if (!cacheEntry) {
         return null;
@@ -47,9 +46,12 @@ const aiCacheService = {
         prompt: cacheEntry.prompt,
         response: cacheEntry.response,
         modelUsed: cacheEntry.model_used,
-        metadata: cacheEntry.metadata,
-        createdAt: cacheEntry.created_at.toISOString(),
-        expiresAt: cacheEntry.expires_at.toISOString(),
+        metadata:
+          typeof cacheEntry.metadata === "string"
+            ? JSON.parse(cacheEntry.metadata)
+            : cacheEntry.metadata,
+        createdAt: new Date(cacheEntry.created_at).toISOString(),
+        expiresAt: new Date(cacheEntry.expires_at).toISOString(),
       };
     } catch (error) {
       logger.error(
@@ -76,35 +78,55 @@ const aiCacheService = {
 
       const now = new Date();
       const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
+      const sequelize = getMySQLClient();
 
       // Check if entry already exists
-      const existingEntry = await AIResponseCache.findOne({
-        where: {
-          prompt_hash: promptHash,
-          model_used: model,
+      const [existingEntry] = await sequelize.query(
+        `SELECT id FROM ai_response_cache 
+         WHERE prompt_hash = ? AND model_used = ?`,
+        {
+          replacements: [promptHash, model],
+          type: sequelize.QueryTypes.SELECT,
         },
-      });
+      );
 
       if (existingEntry) {
         // Update existing cache entry
-        await existingEntry.update({
-          response,
-          metadata,
-          updated_at: now,
-          expires_at: expiresAt,
-        });
+        await sequelize.query(
+          `UPDATE ai_response_cache 
+           SET response = ?, metadata = ?, updated_at = ?, expires_at = ? 
+           WHERE id = ?`,
+          {
+            replacements: [
+              response,
+              JSON.stringify(metadata || {}),
+              now,
+              expiresAt,
+              existingEntry.id,
+            ],
+            type: sequelize.QueryTypes.UPDATE,
+          },
+        );
       } else {
         // Create new cache entry
-        await AIResponseCache.create({
-          prompt,
-          prompt_hash: promptHash,
-          response,
-          model_used: model,
-          metadata,
-          created_at: now,
-          updated_at: now,
-          expires_at: expiresAt,
-        });
+        await sequelize.query(
+          `INSERT INTO ai_response_cache 
+           (id, prompt, prompt_hash, response, model_used, metadata, created_at, updated_at, expires_at) 
+           VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?)`,
+          {
+            replacements: [
+              prompt,
+              promptHash,
+              response,
+              model,
+              JSON.stringify(metadata || {}),
+              now,
+              now,
+              expiresAt,
+            ],
+            type: sequelize.QueryTypes.INSERT,
+          },
+        );
       }
 
       return true;
@@ -123,17 +145,18 @@ const aiCacheService = {
   clearExpiredCache: async (): Promise<number> => {
     try {
       const now = new Date();
+      const sequelize = getMySQLClient();
 
       // Delete expired cache entries
-      const result = await AIResponseCache.destroy({
-        where: {
-          expires_at: {
-            [Symbol.for("lt")]: now,
-          },
+      const [result] = await sequelize.query(
+        `DELETE FROM ai_response_cache WHERE expires_at < ?`,
+        {
+          replacements: [now],
+          type: sequelize.QueryTypes.DELETE,
         },
-      });
+      );
 
-      return result;
+      return result?.affectedRows || 0;
     } catch (error) {
       logger.error(
         "Error clearing expired cache",
@@ -152,24 +175,21 @@ const aiCacheService = {
   ): Promise<number> => {
     try {
       const sequelize = getMySQLClient();
-      const Op = sequelize.Op;
-
-      const whereClause: any = {
-        prompt: {
-          [Op.like]: `%${promptPattern}%`,
-        },
-      };
+      let query = `DELETE FROM ai_response_cache WHERE prompt LIKE ?`;
+      const replacements = [`%${promptPattern}%`];
 
       if (model) {
-        whereClause.model_used = model;
+        query += ` AND model_used = ?`;
+        replacements.push(model);
       }
 
       // Delete matching cache entries
-      const result = await AIResponseCache.destroy({
-        where: whereClause,
+      const [result] = await sequelize.query(query, {
+        replacements,
+        type: sequelize.QueryTypes.DELETE,
       });
 
-      return result;
+      return result?.affectedRows || 0;
     } catch (error) {
       logger.error(
         "Error invalidating cache",

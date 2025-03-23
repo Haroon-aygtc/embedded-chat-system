@@ -1,15 +1,12 @@
 /**
  * Realtime Service Module
  *
- * This module provides functionality for Supabase real-time subscriptions.
+ * This module provides functionality for real-time communication using WebSockets
+ * instead of Supabase real-time subscriptions.
  */
 
-import {
-  RealtimeChannel,
-  RealtimePostgresChangesPayload,
-} from "@supabase/supabase-js";
-import { getSupabaseClient } from "./supabase";
 import logger from "@/utils/logger";
+import websocketService, { MessageType } from "../core/websocket";
 
 // Subscription callback type
 export type SubscriptionCallback<T = any> = (payload: T) => void;
@@ -25,18 +22,18 @@ type TableName =
   | "chat_sessions"
   | "context_rules"
   | "knowledge_base_configs"
-  | "widget_configs";
+  | "widget_configs"
+  | "notifications";
 
 // Change events
 type ChangeEvent = "INSERT" | "UPDATE" | "DELETE";
 
 /**
- * Service for handling Supabase real-time subscriptions
+ * Service for handling real-time subscriptions via WebSockets
  */
 export class RealtimeService {
-  private channels: Map<string, RealtimeChannel> = new Map();
+  private subscriptions: Map<string, Set<SubscriptionCallback>> = new Map();
   private isInitialized = false;
-  private subscriptionRetryTimeouts: Map<string, number> = new Map();
   private maxRetries = 5;
 
   constructor() {
@@ -49,19 +46,101 @@ export class RealtimeService {
   private initialize() {
     if (this.isInitialized) return;
 
-    // Check if Supabase URL and key are available
-    if (
-      !import.meta.env.VITE_SUPABASE_URL ||
-      !import.meta.env.VITE_SUPABASE_ANON_KEY
-    ) {
-      logger.warn(
-        "Supabase URL or anon key not found. Real-time features will not work.",
+    // Set up WebSocket connection and message handlers
+    websocketService.addMessageHandler(this.handleWebSocketMessage);
+    websocketService.onConnect(() => {
+      logger.info("WebSocket connected for real-time service");
+      this.resubscribeAll();
+    });
+
+    // Connect to WebSocket server
+    websocketService.connect().catch((error) => {
+      logger.error(
+        "Error connecting to WebSocket for real-time service",
+        error,
       );
-      return;
-    }
+    });
 
     this.isInitialized = true;
-    logger.info("Real-time service initialized");
+    logger.info("Real-time service initialized with WebSockets");
+  }
+
+  /**
+   * Handle incoming WebSocket messages
+   */
+  private handleWebSocketMessage = (message: any) => {
+    if (message.type === "database_change" && message.table && message.event) {
+      const { table, event, data } = message;
+      const channelId = `${table}-${event}`;
+
+      // Notify all subscribers for this channel
+      const callbacks = this.subscriptions.get(channelId);
+      if (callbacks) {
+        callbacks.forEach((callback) => {
+          try {
+            callback({
+              new: data,
+              eventType: event,
+              table,
+              schema: "public",
+            });
+          } catch (error) {
+            logger.error(`Error in real-time callback for ${channelId}`, error);
+          }
+        });
+      }
+
+      // Also check for filtered subscriptions
+      this.subscriptions.forEach((callbacks, key) => {
+        if (key.startsWith(`${table}-${event}-`) && data) {
+          // Extract filter from key
+          const filter = key.substring(`${table}-${event}-`.length);
+          const [filterField, filterValue] = filter.split("=");
+
+          // Check if data matches filter
+          if (data[filterField] === filterValue) {
+            callbacks.forEach((callback) => {
+              try {
+                callback({
+                  new: data,
+                  eventType: event,
+                  table,
+                  schema: "public",
+                });
+              } catch (error) {
+                logger.error(
+                  `Error in filtered real-time callback for ${key}`,
+                  error,
+                );
+              }
+            });
+          }
+        }
+      });
+    }
+  };
+
+  /**
+   * Resubscribe to all channels after reconnection
+   */
+  private resubscribeAll() {
+    // Send subscription messages to the server for each channel
+    this.subscriptions.forEach((_, channelId) => {
+      const [table, event, filter] = channelId.split("-");
+
+      websocketService
+        .send({
+          type: MessageType.SUBSCRIBE,
+          payload: {
+            table,
+            event,
+            filter: filter || undefined,
+          },
+        })
+        .catch((error) => {
+          logger.error(`Error resubscribing to ${channelId}`, error);
+        });
+    });
   }
 
   /**
@@ -74,42 +153,78 @@ export class RealtimeService {
    */
   subscribeToTable<T = any>(
     tableName: TableName,
-    callback: SubscriptionCallback<RealtimePostgresChangesPayload<T>>,
+    callback: SubscriptionCallback<T>,
     events: ChangeEvent[] = ["INSERT", "UPDATE", "DELETE"],
     filter?: string,
   ): RealtimeSubscription {
     try {
-      const channelId = `${tableName}-${events.join("-")}-${filter || "all"}`;
+      const subscriptions: RealtimeSubscription[] = [];
 
-      // Create a new channel if it doesn't exist
-      if (!this.channels.has(channelId)) {
-        const supabase = getSupabaseClient();
-        const channel = supabase.channel(channelId);
+      // Create a subscription for each event
+      for (const event of events) {
+        const channelId = `${tableName}-${event}${filter ? `-${filter}` : ""}`;
 
-        // Build the subscription
-        let subscription = channel.on(
-          "postgres_changes",
-          {
-            event: events,
-            schema: "public",
-            table: tableName,
-            ...(filter ? { filter } : {}),
-          },
-          (payload) => {
-            callback(payload as RealtimePostgresChangesPayload<T>);
-          },
-        );
+        // Add callback to subscriptions map
+        if (!this.subscriptions.has(channelId)) {
+          this.subscriptions.set(channelId, new Set());
 
-        // Subscribe to the channel with retry logic
-        this.subscribeWithRetry(channelId, subscription);
+          // Send subscription message to server
+          if (websocketService.isConnected()) {
+            websocketService
+              .send({
+                type: MessageType.SUBSCRIBE,
+                payload: {
+                  table: tableName,
+                  event,
+                  filter: filter || undefined,
+                },
+              })
+              .catch((error) => {
+                logger.error(`Error subscribing to ${channelId}`, error);
+              });
+          }
+        }
 
-        this.channels.set(channelId, channel);
+        const callbacks = this.subscriptions.get(channelId);
+        callbacks?.add(callback);
+
+        // Create unsubscribe function for this event
+        const unsubscribe = () => {
+          const callbacks = this.subscriptions.get(channelId);
+          if (callbacks) {
+            callbacks.delete(callback);
+            if (callbacks.size === 0) {
+              this.subscriptions.delete(channelId);
+
+              // Send unsubscribe message to server
+              if (websocketService.isConnected()) {
+                websocketService
+                  .send({
+                    type: MessageType.UNSUBSCRIBE,
+                    payload: {
+                      table: tableName,
+                      event,
+                      filter: filter || undefined,
+                    },
+                  })
+                  .catch((error) => {
+                    logger.error(
+                      `Error unsubscribing from ${channelId}`,
+                      error,
+                    );
+                  });
+              }
+            }
+          }
+        };
+
+        subscriptions.push({ unsubscribe });
       }
 
-      // Return an unsubscribe function
+      // Return a combined unsubscribe function
       return {
         unsubscribe: () => {
-          this.unsubscribeFromChannel(channelId);
+          subscriptions.forEach((sub) => sub.unsubscribe());
         },
       };
     } catch (error) {
@@ -124,77 +239,6 @@ export class RealtimeService {
   }
 
   /**
-   * Subscribe to a channel with retry logic
-   * @param channelId Channel ID
-   * @param channel Channel to subscribe to
-   * @param attempt Current attempt number
-   */
-  private subscribeWithRetry(
-    channelId: string,
-    channel: RealtimeChannel,
-    attempt: number = 0,
-  ) {
-    try {
-      // Clear any existing retry timeout
-      if (this.subscriptionRetryTimeouts.has(channelId)) {
-        window.clearTimeout(this.subscriptionRetryTimeouts.get(channelId));
-        this.subscriptionRetryTimeouts.delete(channelId);
-      }
-
-      channel.subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          logger.info(`Subscribed to ${channelId}`);
-        } else if (status === "CHANNEL_ERROR") {
-          logger.error(`Error subscribing to ${channelId}`);
-
-          // Retry with exponential backoff
-          if (attempt < this.maxRetries) {
-            const backoffTime = Math.min(1000 * Math.pow(2, attempt), 30000);
-            logger.info(
-              `Retrying subscription to ${channelId} in ${backoffTime}ms`,
-            );
-
-            const timeoutId = window.setTimeout(() => {
-              this.subscribeWithRetry(channelId, channel, attempt + 1);
-            }, backoffTime);
-
-            this.subscriptionRetryTimeouts.set(channelId, timeoutId);
-          } else {
-            logger.error(
-              `Failed to subscribe to ${channelId} after ${this.maxRetries} attempts`,
-            );
-          }
-        }
-      });
-    } catch (error) {
-      logger.error(`Error in subscribeWithRetry for ${channelId}`, error);
-    }
-  }
-
-  /**
-   * Unsubscribe from a channel
-   * @param channelId Channel ID
-   */
-  private unsubscribeFromChannel(channelId: string) {
-    const channel = this.channels.get(channelId);
-    if (channel) {
-      try {
-        channel.unsubscribe();
-        this.channels.delete(channelId);
-        logger.info(`Unsubscribed from ${channelId}`);
-      } catch (error) {
-        logger.error(`Error unsubscribing from ${channelId}`, error);
-      }
-    }
-
-    // Clear any retry timeout
-    if (this.subscriptionRetryTimeouts.has(channelId)) {
-      window.clearTimeout(this.subscriptionRetryTimeouts.get(channelId));
-      this.subscriptionRetryTimeouts.delete(channelId);
-    }
-  }
-
-  /**
    * Subscribe to chat messages for a specific session
    * @param sessionId Session ID
    * @param callback Callback function
@@ -202,13 +246,13 @@ export class RealtimeService {
    */
   subscribeToChatMessages(
     sessionId: string,
-    callback: SubscriptionCallback<RealtimePostgresChangesPayload<any>>,
+    callback: SubscriptionCallback,
   ): RealtimeSubscription {
     return this.subscribeToTable(
       "chat_messages",
       callback,
       ["INSERT"],
-      `session_id=eq.${sessionId}`,
+      `session_id=${sessionId}`,
     );
   }
 
@@ -220,13 +264,13 @@ export class RealtimeService {
    */
   subscribeToChatSession(
     sessionId: string,
-    callback: SubscriptionCallback<RealtimePostgresChangesPayload<any>>,
+    callback: SubscriptionCallback,
   ): RealtimeSubscription {
     return this.subscribeToTable(
       "chat_sessions",
       callback,
       ["UPDATE"],
-      `session_id=eq.${sessionId}`,
+      `session_id=${sessionId}`,
     );
   }
 
@@ -236,7 +280,7 @@ export class RealtimeService {
    * @returns Subscription object
    */
   subscribeToContextRules(
-    callback: SubscriptionCallback<RealtimePostgresChangesPayload<any>>,
+    callback: SubscriptionCallback,
   ): RealtimeSubscription {
     return this.subscribeToTable("context_rules", callback, [
       "INSERT",
@@ -253,35 +297,92 @@ export class RealtimeService {
    */
   subscribeToWidgetConfigs(
     userId: string,
-    callback: SubscriptionCallback<RealtimePostgresChangesPayload<any>>,
+    callback: SubscriptionCallback,
   ): RealtimeSubscription {
     return this.subscribeToTable(
       "widget_configs",
       callback,
       ["INSERT", "UPDATE", "DELETE"],
-      `user_id=eq.${userId}`,
+      `user_id=${userId}`,
     );
+  }
+
+  /**
+   * Subscribe to notifications for a user
+   * @param userId User ID
+   * @param callback Callback function
+   * @returns Subscription object
+   */
+  subscribeToNotifications(
+    userId: string,
+    callback: SubscriptionCallback,
+  ): RealtimeSubscription {
+    return this.subscribeToTable(
+      "notifications",
+      callback,
+      ["INSERT"],
+      `user_id=${userId}`,
+    );
+  }
+
+  /**
+   * Fetch notifications for a user
+   * @param userId User ID
+   * @param limit Maximum number of notifications to fetch
+   * @returns Array of notifications
+   */
+  async fetchNotifications(userId: string, limit: number = 10): Promise<any[]> {
+    try {
+      // This would be implemented with a direct API call
+      // For now, return an empty array
+      return [];
+    } catch (error) {
+      logger.error("Error fetching notifications", error);
+      return [];
+    }
+  }
+
+  /**
+   * Mark notifications as read
+   * @param notificationIds Array of notification IDs
+   * @returns Boolean indicating success
+   */
+  async markNotificationsAsRead(notificationIds: string[]): Promise<boolean> {
+    try {
+      // This would be implemented with a direct API call
+      // For now, return success
+      return true;
+    } catch (error) {
+      logger.error("Error marking notifications as read", error);
+      return false;
+    }
   }
 
   /**
    * Unsubscribe from all channels
    */
   unsubscribeAll() {
-    // Clear all retry timeouts
-    this.subscriptionRetryTimeouts.forEach((timeoutId) => {
-      window.clearTimeout(timeoutId);
-    });
-    this.subscriptionRetryTimeouts.clear();
+    // Send unsubscribe messages for all channels
+    this.subscriptions.forEach((_, channelId) => {
+      const [table, event, filter] = channelId.split("-");
 
-    // Unsubscribe from all channels
-    this.channels.forEach((channel) => {
-      try {
-        channel.unsubscribe();
-      } catch (error) {
-        logger.error("Error unsubscribing from channel", error);
+      if (websocketService.isConnected()) {
+        websocketService
+          .send({
+            type: MessageType.UNSUBSCRIBE,
+            payload: {
+              table,
+              event,
+              filter: filter || undefined,
+            },
+          })
+          .catch((error) => {
+            logger.error(`Error unsubscribing from ${channelId}`, error);
+          });
       }
     });
-    this.channels.clear();
+
+    this.subscriptions.clear();
     logger.info("Unsubscribed from all real-time channels");
   }
 
@@ -290,7 +391,7 @@ export class RealtimeService {
    * @returns Number of active subscriptions
    */
   getActiveSubscriptionCount(): number {
-    return this.channels.size;
+    return this.subscriptions.size;
   }
 
   /**
@@ -305,8 +406,13 @@ export class RealtimeService {
     events: ChangeEvent[] = ["INSERT", "UPDATE", "DELETE"],
     filter?: string,
   ): boolean {
-    const channelId = `${tableName}-${events.join("-")}-${filter || "all"}`;
-    return this.channels.has(channelId);
+    for (const event of events) {
+      const channelId = `${tableName}-${event}${filter ? `-${filter}` : ""}`;
+      if (this.subscriptions.has(channelId)) {
+        return true;
+      }
+    }
+    return false;
   }
 }
 

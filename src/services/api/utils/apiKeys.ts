@@ -4,7 +4,7 @@
  * This module provides functionality for managing and securing API keys.
  */
 
-import { getSupabaseClient } from "../core/supabase";
+import { getMySQLClientForAPI } from "../core/mysql";
 import logger from "@/utils/logger";
 import { env } from "@/config/env";
 
@@ -37,23 +37,14 @@ export const getApiKey = async (service: string): Promise<string | null> => {
     }
 
     // Then check database
-    const supabase = getSupabaseClient();
-    const { data, error } = await supabase
-      .from("api_keys")
-      .select("key_value")
-      .eq("service", service)
-      .eq("is_active", true)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
-
-    if (error) {
-      if (error.code === "PGRST116") {
-        // Record not found
-        return null;
-      }
-      throw error;
-    }
+    const sequelize = await getMySQLClientForAPI();
+    const [data] = await sequelize.query(
+      "SELECT key_value FROM api_keys WHERE service = ? AND is_active = true ORDER BY created_at DESC LIMIT 1",
+      {
+        replacements: [service],
+        type: sequelize.QueryTypes.SELECT,
+      },
+    );
 
     return data?.key_value || null;
   } catch (error) {
@@ -78,14 +69,16 @@ export const checkRateLimit = async (
 
     // Try to get service-specific rate limit from database
     if (!customLimit) {
-      const supabase = getSupabaseClient();
-      const { data, error } = await supabase
-        .from("api_rate_limits")
-        .select("requests_per_minute")
-        .eq("service", service)
-        .single();
+      const sequelize = await getMySQLClientForAPI();
+      const [data] = await sequelize.query(
+        "SELECT requests_per_minute FROM api_rate_limits WHERE service = ? LIMIT 1",
+        {
+          replacements: [service],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
 
-      if (!error && data) {
+      if (data) {
         rateLimit = data.requests_per_minute;
       }
     }
@@ -130,14 +123,20 @@ export const logApiKeyUsage = async (
   statusCode: number,
 ): Promise<void> => {
   try {
-    const supabase = getSupabaseClient();
-    await supabase.from("api_key_usage").insert({
-      service,
-      endpoint,
-      response_time_ms: responseTime,
-      status_code: statusCode,
-      created_at: new Date().toISOString(),
-    });
+    const sequelize = await getMySQLClientForAPI();
+    await sequelize.query(
+      "INSERT INTO api_key_usage (service, endpoint, response_time_ms, status_code, created_at) VALUES (?, ?, ?, ?, ?)",
+      {
+        replacements: [
+          service,
+          endpoint,
+          responseTime,
+          statusCode,
+          new Date().toISOString(),
+        ],
+        type: sequelize.QueryTypes.INSERT,
+      },
+    );
   } catch (error) {
     // Just log the error but don't throw - this is non-critical functionality
     logger.error(`Error logging API key usage for ${service}`, error);
@@ -157,20 +156,26 @@ export const createApiKey = async (
   expiresAt?: string,
 ): Promise<any> => {
   try {
-    const supabase = getSupabaseClient();
-    const { data, error } = await supabase
-      .from("api_keys")
-      .insert({
-        service,
-        key_value: keyValue,
-        is_active: true,
-        expires_at: expiresAt,
-        created_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+    const sequelize = await getMySQLClientForAPI();
+    const now = new Date().toISOString();
+    const id = require("uuid").v4();
 
-    if (error) throw error;
+    await sequelize.query(
+      "INSERT INTO api_keys (id, service, key_value, is_active, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      {
+        replacements: [id, service, keyValue, true, expiresAt, now],
+        type: sequelize.QueryTypes.INSERT,
+      },
+    );
+
+    const [data] = await sequelize.query(
+      "SELECT * FROM api_keys WHERE id = ?",
+      {
+        replacements: [id],
+        type: sequelize.QueryTypes.SELECT,
+      },
+    );
+
     return data;
   } catch (error) {
     logger.error(`Error creating API key for ${service}`, error);
@@ -185,13 +190,15 @@ export const createApiKey = async (
  */
 export const deactivateApiKey = async (id: string): Promise<boolean> => {
   try {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase
-      .from("api_keys")
-      .update({ is_active: false })
-      .eq("id", id);
+    const sequelize = await getMySQLClientForAPI();
+    await sequelize.query(
+      "UPDATE api_keys SET is_active = false WHERE id = ?",
+      {
+        replacements: [id],
+        type: sequelize.QueryTypes.UPDATE,
+      },
+    );
 
-    if (error) throw error;
     return true;
   } catch (error) {
     logger.error(`Error deactivating API key ${id}`, error);
@@ -210,30 +217,30 @@ export const getApiKeyUsageStats = async (
   days: number = 7,
 ): Promise<any> => {
   try {
-    const supabase = getSupabaseClient();
+    const sequelize = await getMySQLClientForAPI();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    const { data, error } = await supabase
-      .from("api_key_usage")
-      .select("*")
-      .eq("service", service)
-      .gte("created_at", startDate.toISOString());
-
-    if (error) throw error;
+    const data = await sequelize.query(
+      "SELECT * FROM api_key_usage WHERE service = ? AND created_at >= ? ORDER BY created_at DESC",
+      {
+        replacements: [service, startDate.toISOString()],
+        type: sequelize.QueryTypes.SELECT,
+      },
+    );
 
     // Calculate statistics
     const totalRequests = data.length;
     const successfulRequests = data.filter(
-      (r) => r.status_code >= 200 && r.status_code < 300,
+      (r: any) => r.status_code >= 200 && r.status_code < 300,
     ).length;
     const avgResponseTime =
-      data.reduce((sum, r) => sum + r.response_time_ms, 0) /
+      data.reduce((sum: number, r: any) => sum + r.response_time_ms, 0) /
       (totalRequests || 1);
 
     // Group by day for chart data
     const requestsByDay: Record<string, number> = {};
-    data.forEach((r) => {
+    data.forEach((r: any) => {
       const day = r.created_at.split("T")[0];
       requestsByDay[day] = (requestsByDay[day] || 0) + 1;
     });

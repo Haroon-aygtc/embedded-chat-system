@@ -1,4 +1,4 @@
-import supabase from "./supabaseClient";
+import { getMySQLClient } from "./mysqlClient";
 import logger from "@/utils/logger";
 import { v4 as uuidv4 } from "uuid";
 
@@ -40,12 +40,11 @@ class ModerationService {
   }> {
     try {
       // Get active moderation rules
-      const { data: rules, error } = await supabase
-        .from("moderation_rules")
-        .select("*")
-        .eq("is_active", true);
-
-      if (error) throw error;
+      const sequelize = await getMySQLClient();
+      const rules = await sequelize.query(
+        `SELECT * FROM moderation_rules WHERE is_active = true`,
+        { type: sequelize.QueryTypes.SELECT },
+      );
 
       let isAllowed = true;
       let flagged = false;
@@ -109,23 +108,36 @@ class ModerationService {
   ): Promise<FlaggedContent | null> {
     try {
       const now = new Date().toISOString();
+      const id = uuidv4();
+      const sequelize = await getMySQLClient();
 
-      const { data, error } = await supabase
-        .from("flagged_content")
-        .insert({
-          id: uuidv4(),
-          content_id: contentId,
-          content_type: contentType,
-          reason,
-          status: "pending",
-          reported_by: reportedBy,
-          created_at: now,
-          updated_at: now,
-        })
-        .select()
-        .single();
+      await sequelize.query(
+        `INSERT INTO flagged_content 
+         (id, content_id, content_type, reason, status, reported_by, created_at, updated_at) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        {
+          replacements: [
+            id,
+            contentId,
+            contentType,
+            reason,
+            "pending",
+            reportedBy,
+            now,
+            now,
+          ],
+          type: sequelize.QueryTypes.INSERT,
+        },
+      );
 
-      if (error) throw error;
+      // Fetch the newly created record
+      const [data] = await sequelize.query(
+        `SELECT * FROM flagged_content WHERE id = ?`,
+        {
+          replacements: [id],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
 
       return this.mapFlaggedContentFromDb(data);
     } catch (error) {
@@ -145,19 +157,20 @@ class ModerationService {
     limit = 50,
   ): Promise<FlaggedContent[]> {
     try {
-      let query = supabase
-        .from("flagged_content")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(limit);
+      const sequelize = await getMySQLClient();
+
+      let query = `SELECT * FROM flagged_content ORDER BY created_at DESC LIMIT ?`;
+      let replacements: any[] = [limit];
 
       if (status) {
-        query = query.eq("status", status);
+        query = `SELECT * FROM flagged_content WHERE status = ? ORDER BY created_at DESC LIMIT ?`;
+        replacements = [status, limit];
       }
 
-      const { data, error } = await query;
-
-      if (error) throw error;
+      const data = await sequelize.query(query, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      });
 
       return data.map(this.mapFlaggedContentFromDb);
     } catch (error) {
@@ -178,19 +191,29 @@ class ModerationService {
     reviewedBy: string,
   ): Promise<FlaggedContent | null> {
     try {
-      const { data, error } = await supabase
-        .from("flagged_content")
-        .update({
-          status,
-          reviewed_by: reviewedBy,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", flaggedContentId)
-        .select()
-        .single();
+      const sequelize = await getMySQLClient();
+      const now = new Date().toISOString();
 
-      if (error) throw error;
+      await sequelize.query(
+        `UPDATE flagged_content 
+         SET status = ?, reviewed_by = ?, updated_at = ? 
+         WHERE id = ?`,
+        {
+          replacements: [status, reviewedBy, now, flaggedContentId],
+          type: sequelize.QueryTypes.UPDATE,
+        },
+      );
 
+      // Fetch the updated record
+      const [data] = await sequelize.query(
+        `SELECT * FROM flagged_content WHERE id = ?`,
+        {
+          replacements: [flaggedContentId],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
+
+      if (!data) return null;
       return this.mapFlaggedContentFromDb(data);
     } catch (error) {
       logger.error(
@@ -210,46 +233,76 @@ class ModerationService {
     },
   ): Promise<ModerationRule | null> {
     try {
+      const sequelize = await getMySQLClient();
       const now = new Date().toISOString();
 
       if (rule.id) {
         // Update existing rule
-        const { data, error } = await supabase
-          .from("moderation_rules")
-          .update({
-            name: rule.name,
-            description: rule.description,
-            pattern: rule.pattern,
-            action: rule.action,
-            replacement: rule.replacement,
-            is_active: rule.isActive,
-            updated_at: now,
-          })
-          .eq("id", rule.id)
-          .select()
-          .single();
+        await sequelize.query(
+          `UPDATE moderation_rules 
+           SET name = ?, description = ?, pattern = ?, action = ?, 
+               replacement = ?, is_active = ?, updated_at = ? 
+           WHERE id = ?`,
+          {
+            replacements: [
+              rule.name,
+              rule.description,
+              rule.pattern,
+              rule.action,
+              rule.replacement,
+              rule.isActive,
+              now,
+              rule.id,
+            ],
+            type: sequelize.QueryTypes.UPDATE,
+          },
+        );
 
-        if (error) throw error;
+        // Fetch the updated rule
+        const [data] = await sequelize.query(
+          `SELECT * FROM moderation_rules WHERE id = ?`,
+          {
+            replacements: [rule.id],
+            type: sequelize.QueryTypes.SELECT,
+          },
+        );
+
+        if (!data) return null;
         return this.mapRuleFromDb(data);
       } else {
         // Create new rule
-        const { data, error } = await supabase
-          .from("moderation_rules")
-          .insert({
-            id: uuidv4(),
-            name: rule.name,
-            description: rule.description,
-            pattern: rule.pattern,
-            action: rule.action,
-            replacement: rule.replacement,
-            is_active: rule.isActive,
-            created_at: now,
-            updated_at: now,
-          })
-          .select()
-          .single();
+        const id = uuidv4();
 
-        if (error) throw error;
+        await sequelize.query(
+          `INSERT INTO moderation_rules 
+           (id, name, description, pattern, action, replacement, is_active, created_at, updated_at) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          {
+            replacements: [
+              id,
+              rule.name,
+              rule.description,
+              rule.pattern,
+              rule.action,
+              rule.replacement,
+              rule.isActive,
+              now,
+              now,
+            ],
+            type: sequelize.QueryTypes.INSERT,
+          },
+        );
+
+        // Fetch the newly created rule
+        const [data] = await sequelize.query(
+          `SELECT * FROM moderation_rules WHERE id = ?`,
+          {
+            replacements: [id],
+            type: sequelize.QueryTypes.SELECT,
+          },
+        );
+
+        if (!data) return null;
         return this.mapRuleFromDb(data);
       }
     } catch (error) {
@@ -266,18 +319,19 @@ class ModerationService {
    */
   async getRules(activeOnly = false): Promise<ModerationRule[]> {
     try {
-      let query = supabase
-        .from("moderation_rules")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const sequelize = await getMySQLClient();
+
+      let query = `SELECT * FROM moderation_rules ORDER BY created_at DESC`;
+      let replacements: any[] = [];
 
       if (activeOnly) {
-        query = query.eq("is_active", true);
+        query = `SELECT * FROM moderation_rules WHERE is_active = true ORDER BY created_at DESC`;
       }
 
-      const { data, error } = await query;
-
-      if (error) throw error;
+      const data = await sequelize.query(query, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      });
 
       return data.map(this.mapRuleFromDb);
     } catch (error) {
@@ -299,6 +353,7 @@ class ModerationService {
     duration?: number,
   ): Promise<boolean> {
     try {
+      const sequelize = await getMySQLClient();
       const now = new Date();
       let expiresAt = null;
 
@@ -306,16 +361,23 @@ class ModerationService {
         expiresAt = new Date(now.getTime() + duration * 1000).toISOString();
       }
 
-      const { error } = await supabase.from("user_bans").insert({
-        id: uuidv4(),
-        user_id: userId,
-        reason,
-        banned_by: bannedBy,
-        created_at: now.toISOString(),
-        expires_at: expiresAt,
-      });
+      await sequelize.query(
+        `INSERT INTO user_bans 
+         (id, user_id, reason, banned_by, created_at, expires_at) 
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        {
+          replacements: [
+            uuidv4(),
+            userId,
+            reason,
+            bannedBy,
+            now.toISOString(),
+            expiresAt,
+          ],
+          type: sequelize.QueryTypes.INSERT,
+        },
+      );
 
-      if (error) throw error;
       return true;
     } catch (error) {
       logger.error(
@@ -331,17 +393,20 @@ class ModerationService {
    */
   async isUserBanned(userId: string): Promise<boolean> {
     try {
+      const sequelize = await getMySQLClient();
       const now = new Date().toISOString();
 
-      const { data, error } = await supabase
-        .from("user_bans")
-        .select("*")
-        .eq("user_id", userId)
-        .or(`expires_at.is.null,expires_at.gt.${now}`)
-        .limit(1);
+      const bans = await sequelize.query(
+        `SELECT * FROM user_bans 
+         WHERE user_id = ? AND (expires_at IS NULL OR expires_at > ?) 
+         LIMIT 1`,
+        {
+          replacements: [userId, now],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
 
-      if (error) throw error;
-      return data.length > 0;
+      return bans.length > 0;
     } catch (error) {
       logger.error(
         "Error checking if user is banned",

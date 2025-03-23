@@ -22,6 +22,9 @@ export enum MessageType {
   SYSTEM = "system",
   ERROR = "error",
   ECHO = "echo",
+  SUBSCRIBE = "subscribe",
+  UNSUBSCRIBE = "unsubscribe",
+  DATABASE_CHANGE = "database_change",
 }
 
 // WebSocket message interface
@@ -456,6 +459,79 @@ export class WebSocketService {
       clearInterval(this.messageCountResetInterval);
       this.messageCountResetInterval = null;
     }
+  }
+
+  /**
+   * Broadcast a message to all connected clients (server-side only)
+   * @param message Message to broadcast
+   */
+  public broadcast(message: any): void {
+    // This is a client-side implementation, so this method does nothing
+    // It's included for API compatibility with the server-side implementation
+    logger.warn("broadcast method called on client-side WebSocket service");
+  }
+
+  /**
+   * Send a message to a specific client (server-side only)
+   * @param clientId Client ID
+   * @param message Message to send
+   * @returns Boolean indicating if the message was sent
+   */
+  public sendToClient(clientId: string, message: any): boolean {
+    // This is a client-side implementation, so this method does nothing
+    // It's included for API compatibility with the server-side implementation
+    logger.warn("sendToClient method called on client-side WebSocket service");
+    return false;
+  }
+
+  /**
+   * Get the number of connected clients (server-side only)
+   * @returns Number of connected clients
+   */
+  public getConnectedClientCount(): number {
+    // This is a client-side implementation, so this method returns 0
+    // It's included for API compatibility with the server-side implementation
+    return 0;
+  }
+
+  /**
+   * Register a message handler (server-side only)
+   * @param handler Message handler function
+   * @returns Function to remove the handler
+   */
+  public onMessage(
+    handler: (message: any, clientId: string) => void,
+  ): () => void {
+    // This is a client-side implementation, so this method does nothing
+    // It's included for API compatibility with the server-side implementation
+    logger.warn("onMessage method called on client-side WebSocket service");
+    return () => {};
+  }
+
+  /**
+   * Register a connection handler (server-side only)
+   * @param handler Connection handler function
+   * @returns Function to remove the handler
+   */
+  public onConnection(handler: (clientId: string) => void): () => void {
+    // This is a client-side implementation, so this method does nothing
+    // It's included for API compatibility with the server-side implementation
+    logger.warn("onConnection method called on client-side WebSocket service");
+    return () => {};
+  }
+
+  /**
+   * Register a disconnection handler (server-side only)
+   * @param handler Disconnection handler function
+   * @returns Function to remove the handler
+   */
+  public onDisconnection(handler: (clientId: string) => void): () => void {
+    // This is a client-side implementation, so this method does nothing
+    // It's included for API compatibility with the server-side implementation
+    logger.warn(
+      "onDisconnection method called on client-side WebSocket service",
+    );
+    return () => {};
   }
 }
 

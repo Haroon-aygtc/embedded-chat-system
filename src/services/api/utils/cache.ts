@@ -4,9 +4,8 @@
  * This module provides caching functionality for AI responses and other data.
  */
 
-import { getMySQLClientForAPI, executeQuery } from "../core/mysql";
+import { getMySQLClientForAPI } from "../core/mysql";
 import logger from "@/utils/logger";
-import { AIResponseCache } from "@/models";
 
 // In-memory cache for faster access
 interface MemoryCache {
@@ -54,14 +53,15 @@ export const getCachedResponse = async (
     }
 
     // If not in memory cache, check database
-    const cacheEntry = await AIResponseCache.findOne({
-      where: {
-        cache_key: cacheKey,
-        expires_at: {
-          [Symbol.for("gt")]: new Date(),
-        },
+    const sequelize = await getMySQLClientForAPI();
+
+    const [cacheEntry] = await sequelize.query(
+      "SELECT * FROM ai_response_cache WHERE cache_key = ? AND expires_at > ? LIMIT 1",
+      {
+        replacements: [cacheKey, new Date().toISOString()],
+        type: sequelize.QueryTypes.SELECT,
       },
-    });
+    );
 
     if (cacheEntry) {
       // Store in memory cache for faster access next time
@@ -117,29 +117,53 @@ export const cacheResponse = async (
     };
 
     // Store in database for persistence
-    const existingEntry = await AIResponseCache.findOne({
-      where: { cache_key: cacheKey },
-    });
+    const sequelize = await getMySQLClientForAPI();
+
+    // Check if entry already exists
+    const [existingEntry] = await sequelize.query(
+      "SELECT id FROM ai_response_cache WHERE cache_key = ? LIMIT 1",
+      {
+        replacements: [cacheKey],
+        type: sequelize.QueryTypes.SELECT,
+      },
+    );
 
     if (existingEntry) {
-      await existingEntry.update({
-        response,
-        model_used: model,
-        metadata,
-        updated_at: now,
-        expires_at: expiresAt,
-      });
+      // Update existing entry
+      await sequelize.query(
+        "UPDATE ai_response_cache SET response = ?, model_used = ?, metadata = ?, updated_at = ?, expires_at = ? WHERE id = ?",
+        {
+          replacements: [
+            response,
+            model,
+            JSON.stringify(metadata || {}),
+            now.toISOString(),
+            expiresAt.toISOString(),
+            existingEntry.id,
+          ],
+          type: sequelize.QueryTypes.UPDATE,
+        },
+      );
     } else {
-      await AIResponseCache.create({
-        cache_key: cacheKey,
-        query,
-        response,
-        model_used: model,
-        metadata,
-        created_at: now,
-        updated_at: now,
-        expires_at: expiresAt,
-      });
+      // Create new entry
+      const id = require("uuid").v4();
+      await sequelize.query(
+        "INSERT INTO ai_response_cache (id, cache_key, query, response, model_used, metadata, created_at, updated_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        {
+          replacements: [
+            id,
+            cacheKey,
+            query,
+            response,
+            model,
+            JSON.stringify(metadata || {}),
+            now.toISOString(),
+            now.toISOString(),
+            expiresAt.toISOString(),
+          ],
+          type: sequelize.QueryTypes.INSERT,
+        },
+      );
     }
   } catch (error) {
     logger.error("Error caching response", error);
@@ -163,8 +187,10 @@ export const invalidateCache = async (
     delete memoryCache[cacheKey];
 
     // Remove from database
-    await AIResponseCache.destroy({
-      where: { cache_key: cacheKey },
+    const sequelize = await getMySQLClientForAPI();
+    await sequelize.query("DELETE FROM ai_response_cache WHERE cache_key = ?", {
+      replacements: [cacheKey],
+      type: sequelize.QueryTypes.DELETE,
     });
   } catch (error) {
     logger.error("Error invalidating cache", error);
@@ -194,13 +220,19 @@ export const clearCache = async (model?: string): Promise<void> => {
     }
 
     // Clear database cache
+    const sequelize = await getMySQLClientForAPI();
+
     if (model) {
-      await AIResponseCache.destroy({
-        where: { model_used: model },
-      });
+      await sequelize.query(
+        "DELETE FROM ai_response_cache WHERE model_used = ?",
+        {
+          replacements: [model],
+          type: sequelize.QueryTypes.DELETE,
+        },
+      );
     } else {
-      await AIResponseCache.destroy({
-        where: {},
+      await sequelize.query("DELETE FROM ai_response_cache", {
+        type: sequelize.QueryTypes.DELETE,
       });
     }
   } catch (error) {
@@ -215,10 +247,14 @@ export const clearCache = async (model?: string): Promise<void> => {
  */
 export const getCacheStats = async (): Promise<any> => {
   try {
-    const sequelize = getMySQLClientForAPI();
+    const sequelize = await getMySQLClientForAPI();
 
     // Get total count
-    const totalCount = await AIResponseCache.count();
+    const [totalCountResult] = await sequelize.query(
+      "SELECT COUNT(*) as count FROM ai_response_cache",
+      { type: sequelize.QueryTypes.SELECT },
+    );
+    const totalCount = totalCountResult.count;
 
     // Get count by model
     const modelData = await sequelize.query(
@@ -227,13 +263,14 @@ export const getCacheStats = async (): Promise<any> => {
     );
 
     // Get expired count
-    const expiredCount = await AIResponseCache.count({
-      where: {
-        expires_at: {
-          [Symbol.for("lt")]: new Date(),
-        },
+    const [expiredCountResult] = await sequelize.query(
+      "SELECT COUNT(*) as count FROM ai_response_cache WHERE expires_at < ?",
+      {
+        replacements: [new Date().toISOString()],
+        type: sequelize.QueryTypes.SELECT,
       },
-    });
+    );
+    const expiredCount = expiredCountResult.count;
 
     // Memory cache stats
     const memoryCacheSize = Object.keys(memoryCache).length;

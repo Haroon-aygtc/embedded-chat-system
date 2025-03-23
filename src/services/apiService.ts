@@ -1,7 +1,11 @@
 import axios from "axios";
 import { env } from "@/config/env";
 import logger from "@/utils/logger";
-import { ContextRule, User, WidgetConfig, SystemSetting } from "./mockModels";
+import { ContextRule } from "@/types/contextRules";
+import { PromptTemplate } from "@/types/promptTemplates";
+import { v4 as uuidv4 } from "uuid";
+import { User, WidgetConfig, SystemSetting } from "@/models";
+import { getMySQLClient } from "./mysqlClient";
 
 // Create axios instance with base URL
 const api = axios.create({
@@ -42,9 +46,13 @@ api.interceptors.response.use(
 export const contextRulesApi = {
   getAll: async () => {
     try {
-      const contextRules = await ContextRule.findAll({
-        order: [["created_at", "DESC"]],
-      });
+      const sequelize = getMySQLClient();
+      const contextRules = await sequelize.query(
+        `SELECT * FROM context_rules ORDER BY created_at DESC`,
+        {
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
 
       // Transform the data to match the ContextRule type
       return contextRules.map((rule) => ({
@@ -75,56 +83,21 @@ export const contextRulesApi = {
         "Error fetching context rules",
         error instanceof Error ? error : new Error(String(error)),
       );
-      // Fallback to local data if database query fails
-      return [
-        {
-          id: "1",
-          name: "UAE Government Information",
-          description:
-            "Limit responses to official UAE government information and services",
-          isActive: true,
-          contextType: "business",
-          keywords: [
-            "UAE",
-            "government",
-            "Dubai",
-            "Abu Dhabi",
-            "services",
-            "visa",
-            "Emirates ID",
-          ],
-          excludedTopics: ["politics", "criticism"],
-          promptTemplate:
-            "You are an assistant that provides information about UAE government services. {{ userQuery }}",
-          responseFilters: [
-            { type: "keyword", value: "unofficial", action: "block" },
-            { type: "regex", value: "(criticism|negative)", action: "flag" },
-          ],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        {
-          id: "2",
-          name: "General Information",
-          description:
-            "Provide general information with no specific business context",
-          isActive: false,
-          contextType: "general",
-          keywords: ["help", "information", "question", "what", "how", "when"],
-          excludedTopics: [],
-          promptTemplate:
-            "You are a helpful assistant. Please answer the following question: {{ userQuery }}",
-          responseFilters: [],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      ];
+      // Return empty array when no data is available
+      return [];
     }
   },
 
   getById: async (id) => {
     try {
-      const rule = await ContextRule.findByPk(id);
+      const sequelize = getMySQLClient();
+      const [rule] = await sequelize.query(
+        `SELECT * FROM context_rules WHERE id = ?`,
+        {
+          replacements: [id],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
       if (!rule) {
         throw new Error("Context rule not found");
       }
@@ -157,15 +130,8 @@ export const contextRulesApi = {
         `Error fetching context rule ${id}`,
         error instanceof Error ? error : new Error(String(error)),
       );
-      // Fallback to local data
-      const rules = await contextRulesApi.getAll();
-      const rule = rules.find((r) => r.id === id);
-
-      if (!rule) {
-        throw new Error("Context rule not found");
-      }
-
-      return rule;
+      // No data available
+      throw new Error("Context rule not found");
     }
   },
 
@@ -189,7 +155,42 @@ export const contextRulesApi = {
         updated_at: new Date(),
       };
 
-      const newRule = await ContextRule.create(dbRule);
+      const sequelize = getMySQLClient();
+      await sequelize.query(
+        `INSERT INTO context_rules 
+         (id, name, description, is_active, context_type, keywords, excluded_topics, 
+          prompt_template, response_filters, use_knowledge_bases, knowledge_base_ids, 
+          preferred_model, created_at, updated_at) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        {
+          replacements: [
+            dbRule.id,
+            dbRule.name,
+            dbRule.description,
+            dbRule.is_active,
+            dbRule.context_type,
+            JSON.stringify(dbRule.keywords),
+            JSON.stringify(dbRule.excluded_topics),
+            dbRule.prompt_template,
+            JSON.stringify(dbRule.response_filters),
+            dbRule.use_knowledge_bases,
+            JSON.stringify(dbRule.knowledge_base_ids),
+            dbRule.preferred_model,
+            dbRule.created_at,
+            dbRule.updated_at,
+          ],
+          type: sequelize.QueryTypes.INSERT,
+        },
+      );
+
+      // Fetch the newly created rule
+      const [newRule] = await sequelize.query(
+        `SELECT * FROM context_rules WHERE id = ?`,
+        {
+          replacements: [dbRule.id],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
 
       // Transform back to ContextRule type
       return {
@@ -219,20 +220,22 @@ export const contextRulesApi = {
         "Error creating context rule",
         error instanceof Error ? error : new Error(String(error)),
       );
-      // Fallback for demo purposes
-      const newRule = {
-        ...rule,
-        id: Date.now().toString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      return newRule;
+      // No data available
+      throw new Error("Failed to create context rule");
     }
   },
 
   update: async (id, rule) => {
     try {
-      const existingRule = await ContextRule.findByPk(id);
+      const sequelize = getMySQLClient();
+      const [existingRule] = await sequelize.query(
+        `SELECT * FROM context_rules WHERE id = ?`,
+        {
+          replacements: [id],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
+
       if (!existingRule) {
         throw new Error("Context rule not found");
       }
@@ -262,10 +265,40 @@ export const contextRulesApi = {
       dbRule.version = (existingRule.version || 1) + 1;
       dbRule.updated_at = new Date();
 
-      await existingRule.update(dbRule);
+      // Build the SQL update statement dynamically
+      const updateFields = [];
+      const replacements = [];
+
+      Object.entries(dbRule).forEach(([key, value]) => {
+        if (value !== undefined) {
+          updateFields.push(
+            `${key.replace(/([A-Z])/g, "_$1").toLowerCase()} = ?`,
+          );
+          replacements.push(
+            typeof value === "object" ? JSON.stringify(value) : value,
+          );
+        }
+      });
+
+      if (updateFields.length > 0) {
+        replacements.push(id);
+        await sequelize.query(
+          `UPDATE context_rules SET ${updateFields.join(", ")} WHERE id = ?`,
+          {
+            replacements,
+            type: sequelize.QueryTypes.UPDATE,
+          },
+        );
+      }
 
       // Refresh from database
-      const updatedRule = await ContextRule.findByPk(id);
+      const [updatedRule] = await sequelize.query(
+        `SELECT * FROM context_rules WHERE id = ?`,
+        {
+          replacements: [id],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
 
       // Transform back to ContextRule type
       return {
@@ -295,25 +328,30 @@ export const contextRulesApi = {
         `Error updating context rule ${id}`,
         error instanceof Error ? error : new Error(String(error)),
       );
-      // Fallback for demo purposes
-      const existingRule = await contextRulesApi.getById(id);
-      const updatedRule = {
-        ...existingRule,
-        ...rule,
-        updatedAt: new Date().toISOString(),
-      };
-      return updatedRule;
+      // No data available
+      throw new Error("Failed to update context rule");
     }
   },
 
   delete: async (id) => {
     try {
-      const rule = await ContextRule.findByPk(id);
+      const sequelize = getMySQLClient();
+      const [rule] = await sequelize.query(
+        `SELECT * FROM context_rules WHERE id = ?`,
+        {
+          replacements: [id],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
+
       if (!rule) {
         throw new Error("Context rule not found");
       }
 
-      await rule.destroy();
+      await sequelize.query(`DELETE FROM context_rules WHERE id = ?`, {
+        replacements: [id],
+        type: sequelize.QueryTypes.DELETE,
+      });
     } catch (error) {
       logger.error(
         `Error deleting context rule ${id}`,
@@ -344,11 +382,8 @@ export const contextRulesApi = {
         `Error testing context rule ${ruleId}`,
         error instanceof Error ? error : new Error(String(error)),
       );
-      // Fallback for demo purposes
-      return {
-        result: "This query matches the context rule.",
-        matches: ["UAE", "visa", "services"],
-      };
+      // No data available
+      throw new Error("Failed to test context rule");
     }
   },
 };
@@ -367,12 +402,8 @@ export const chatApi = {
         "Error sending chat message",
         error instanceof Error ? error : new Error(String(error)),
       );
-      // Fallback for demo purposes
-      return {
-        id: Date.now().toString(),
-        text: `This is a fallback response to: "${message}". The API request failed, but in production this would be generated by an AI model.`,
-        timestamp: new Date().toISOString(),
-      };
+      // No data available
+      throw new Error("Failed to send chat message");
     }
   },
 
@@ -385,27 +416,8 @@ export const chatApi = {
         "Error fetching chat history",
         error instanceof Error ? error : new Error(String(error)),
       );
-      // Fallback to local data
-      return [
-        {
-          id: "1",
-          text: "Hello, how can I help you with the chat widget today?",
-          timestamp: new Date(Date.now() - 3600000).toISOString(),
-          sender: "ai",
-        },
-        {
-          id: "2",
-          text: "I'd like to know how to embed it on my website.",
-          timestamp: new Date(Date.now() - 3500000).toISOString(),
-          sender: "user",
-        },
-        {
-          id: "3",
-          text: "You can embed the chat widget using either an iframe or as a Web Component. Would you like me to explain both options?",
-          timestamp: new Date(Date.now() - 3400000).toISOString(),
-          sender: "ai",
-        },
-      ];
+      // No data available
+      return [];
     }
   },
 
@@ -443,8 +455,11 @@ export const chatApi = {
 export const widgetConfigApi = {
   getAll: async () => {
     try {
-      const configs = await WidgetConfig.findAll();
-      return configs.map((config) => config.get({ plain: true }));
+      const sequelize = getMySQLClient();
+      const configs = await sequelize.query(`SELECT * FROM widget_configs`, {
+        type: sequelize.QueryTypes.SELECT,
+      });
+      return configs;
     } catch (error) {
       logger.error(
         "Error fetching widget configurations",
@@ -457,11 +472,15 @@ export const widgetConfigApi = {
 
   getByUserId: async (userId) => {
     try {
-      const config = await WidgetConfig.findOne({
-        where: { user_id: userId },
-        order: [["created_at", "DESC"]],
-      });
-      return config ? config.get({ plain: true }) : null;
+      const sequelize = getMySQLClient();
+      const [config] = await sequelize.query(
+        `SELECT * FROM widget_configs WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`,
+        {
+          replacements: [userId],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
+      return config || null;
     } catch (error) {
       logger.error(
         `Error fetching widget configuration for user ${userId}`,
@@ -473,8 +492,15 @@ export const widgetConfigApi = {
 
   getById: async (id) => {
     try {
-      const config = await WidgetConfig.findByPk(id);
-      return config ? config.get({ plain: true }) : null;
+      const sequelize = getMySQLClient();
+      const [config] = await sequelize.query(
+        `SELECT * FROM widget_configs WHERE id = ?`,
+        {
+          replacements: [id],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
+      return config || null;
     } catch (error) {
       logger.error(
         `Error fetching widget configuration with id ${id}`,
@@ -486,8 +512,51 @@ export const widgetConfigApi = {
 
   create: async (config) => {
     try {
-      const newConfig = await WidgetConfig.create(config);
-      return newConfig.get({ plain: true });
+      const sequelize = getMySQLClient();
+      const id = uuidv4();
+
+      // Prepare fields and values for insertion
+      const fields = ["id"];
+      const placeholders = ["?"];
+      const values = [id];
+
+      Object.entries(config).forEach(([key, value]) => {
+        fields.push(key.replace(/([A-Z])/g, "_$1").toLowerCase());
+        placeholders.push("?");
+        values.push(typeof value === "object" ? JSON.stringify(value) : value);
+      });
+
+      // Add timestamps if not provided
+      if (!fields.includes("created_at")) {
+        fields.push("created_at");
+        placeholders.push("?");
+        values.push(new Date());
+      }
+
+      if (!fields.includes("updated_at")) {
+        fields.push("updated_at");
+        placeholders.push("?");
+        values.push(new Date());
+      }
+
+      await sequelize.query(
+        `INSERT INTO widget_configs (${fields.join(", ")}) VALUES (${placeholders.join(", ")})`,
+        {
+          replacements: values,
+          type: sequelize.QueryTypes.INSERT,
+        },
+      );
+
+      // Fetch the newly created config
+      const [newConfig] = await sequelize.query(
+        `SELECT * FROM widget_configs WHERE id = ?`,
+        {
+          replacements: [id],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
+
+      return newConfig;
     } catch (error) {
       logger.error(
         "Error creating widget configuration",
@@ -499,13 +568,59 @@ export const widgetConfigApi = {
 
   update: async (id, config) => {
     try {
-      const existingConfig = await WidgetConfig.findByPk(id);
+      const sequelize = getMySQLClient();
+      const [existingConfig] = await sequelize.query(
+        `SELECT * FROM widget_configs WHERE id = ?`,
+        {
+          replacements: [id],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
+
       if (!existingConfig) {
         throw new Error("Widget configuration not found");
       }
 
-      await existingConfig.update(config);
-      return existingConfig.get({ plain: true });
+      // Build the SQL update statement dynamically
+      const updateFields = [];
+      const replacements = [];
+
+      Object.entries(config).forEach(([key, value]) => {
+        if (value !== undefined) {
+          updateFields.push(
+            `${key.replace(/([A-Z])/g, "_$1").toLowerCase()} = ?`,
+          );
+          replacements.push(
+            typeof value === "object" ? JSON.stringify(value) : value,
+          );
+        }
+      });
+
+      // Add updated_at timestamp
+      updateFields.push("updated_at = ?");
+      replacements.push(new Date());
+
+      if (updateFields.length > 0) {
+        replacements.push(id);
+        await sequelize.query(
+          `UPDATE widget_configs SET ${updateFields.join(", ")} WHERE id = ?`,
+          {
+            replacements,
+            type: sequelize.QueryTypes.UPDATE,
+          },
+        );
+      }
+
+      // Fetch the updated config
+      const [updatedConfig] = await sequelize.query(
+        `SELECT * FROM widget_configs WHERE id = ?`,
+        {
+          replacements: [id],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
+
+      return updatedConfig;
     } catch (error) {
       logger.error(
         `Error updating widget configuration with id ${id}`,
@@ -517,12 +632,23 @@ export const widgetConfigApi = {
 
   delete: async (id) => {
     try {
-      const config = await WidgetConfig.findByPk(id);
+      const sequelize = getMySQLClient();
+      const [config] = await sequelize.query(
+        `SELECT * FROM widget_configs WHERE id = ?`,
+        {
+          replacements: [id],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
+
       if (!config) {
         throw new Error("Widget configuration not found");
       }
 
-      await config.destroy();
+      await sequelize.query(`DELETE FROM widget_configs WHERE id = ?`, {
+        replacements: [id],
+        type: sequelize.QueryTypes.DELETE,
+      });
       return true;
     } catch (error) {
       logger.error(
@@ -538,9 +664,14 @@ export const widgetConfigApi = {
 export const systemSettingsApi = {
   getSettings: async (category, environment = "production") => {
     try {
-      const setting = await SystemSetting.findOne({
-        where: { category, environment },
-      });
+      const sequelize = getMySQLClient();
+      const [setting] = await sequelize.query(
+        `SELECT * FROM system_settings WHERE category = ? AND environment = ?`,
+        {
+          replacements: [category, environment],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
 
       if (!setting) {
         throw new Error(
@@ -555,94 +686,52 @@ export const systemSettingsApi = {
         error instanceof Error ? error : new Error(String(error)),
       );
 
-      // Return default settings based on category
-      switch (category) {
-        case "general":
-          return {
-            siteName: "Context-Aware Chat System",
-            siteDescription: "Embeddable AI chat widget with context awareness",
-            supportEmail: "support@example.com",
-            logoUrl: "https://example.com/logo.png",
-            faviconUrl: "https://example.com/favicon.ico",
-            maintenanceMode: false,
-            defaultLanguage: "en",
-            timeZone: "UTC",
-            dateFormat: "MM/DD/YYYY",
-            timeFormat: "12h",
-          };
-        case "security":
-          return {
-            enableMfa: false,
-            sessionTimeout: 60,
-            maxLoginAttempts: 5,
-            passwordPolicy: {
-              minLength: 8,
-              requireUppercase: true,
-              requireLowercase: true,
-              requireNumbers: true,
-              requireSpecialChars: true,
-              passwordExpiry: 90,
-            },
-            ipRestrictions: "",
-          };
-        case "email":
-          return {
-            smtpHost: "smtp.example.com",
-            smtpPort: 587,
-            smtpUsername: "smtp_user",
-            smtpPassword: "",
-            smtpSecure: true,
-            fromEmail: "no-reply@example.com",
-            fromName: "Chat System",
-          };
-        case "backup":
-          return {
-            enableAutomaticBackups: true,
-            backupFrequency: "daily",
-            backupTime: "02:00",
-            retentionPeriod: 30,
-            backupLocation: "local",
-            s3Bucket: "",
-            s3Region: "",
-            s3AccessKey: "",
-            s3SecretKey: "",
-          };
-        case "logging":
-          return {
-            logLevel: "info",
-            enableAuditLogs: true,
-            logRetention: 30,
-            enableErrorReporting: true,
-            errorReportingEmail: "",
-          };
-        default:
-          return {};
-      }
+      // No data available
+      return {};
     }
   },
 
   saveSettings: async (category, settings, environment = "production") => {
     try {
       // Check if settings for this category and environment already exist
-      const existingSetting = await SystemSetting.findOne({
-        where: { category, environment },
-      });
+      const sequelize = getMySQLClient();
+      const [existingSetting] = await sequelize.query(
+        `SELECT * FROM system_settings WHERE category = ? AND environment = ?`,
+        {
+          replacements: [category, environment],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
 
       if (existingSetting) {
         // Update existing settings
-        await existingSetting.update({
-          settings,
-          updated_at: new Date(),
-        });
+        await sequelize.query(
+          `UPDATE system_settings SET settings = ?, updated_at = ? WHERE id = ?`,
+          {
+            replacements: [
+              JSON.stringify(settings),
+              new Date(),
+              existingSetting.id,
+            ],
+            type: sequelize.QueryTypes.UPDATE,
+          },
+        );
       } else {
         // Create new settings
-        await SystemSetting.create({
-          category,
-          environment,
-          settings,
-          created_at: new Date(),
-          updated_at: new Date(),
-        });
+        await sequelize.query(
+          `INSERT INTO system_settings (id, category, environment, settings, created_at, updated_at) 
+           VALUES (UUID(), ?, ?, ?, ?, ?)`,
+          {
+            replacements: [
+              category,
+              environment,
+              JSON.stringify(settings),
+              new Date(),
+              new Date(),
+            ],
+            type: sequelize.QueryTypes.INSERT,
+          },
+        );
       }
 
       return { success: true };

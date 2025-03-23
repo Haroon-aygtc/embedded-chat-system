@@ -15,22 +15,72 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import realtimeService from "@/services/realtimeService";
 
 interface DashboardHeaderProps {
   title?: string;
-  username?: string;
-  userAvatar?: string;
-  notificationCount?: number;
 }
 
 const DashboardHeader = ({
   title = "Admin Dashboard",
-  username = "Admin User",
-  userAvatar = "",
-  notificationCount = 3,
 }: DashboardHeaderProps) => {
   const navigate = useNavigate();
   const auth = useAuth();
+  const [notifications, setNotifications] = React.useState<any[]>([]);
+  const [notificationCount, setNotificationCount] = React.useState(0);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    fetchNotifications();
+
+    // Set up real-time subscription for new notifications
+    const unsubscribe = realtimeService.subscribeToNotifications(
+      auth.user?.id || "",
+      (newNotification) => {
+        setNotifications((prev) => [newNotification, ...prev]);
+        setNotificationCount((count) => count + 1);
+      },
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [auth.user?.id]);
+
+  const fetchNotifications = async () => {
+    if (!auth.user?.id) return;
+
+    try {
+      setLoading(true);
+      const notifications = await realtimeService.fetchNotifications(
+        auth.user.id,
+        5,
+      );
+      setNotifications(notifications);
+      setNotificationCount(notifications.length);
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const markNotificationsAsRead = async () => {
+    if (!auth.user?.id || notifications.length === 0) return;
+
+    try {
+      const notificationIds = notifications.map((n) => n.id);
+      const success =
+        await realtimeService.markNotificationsAsRead(notificationIds);
+
+      if (success) {
+        setNotificationCount(0);
+        fetchNotifications(); // Refresh the list
+      }
+    } catch (error) {
+      console.error("Error marking notifications as read:", error);
+    }
+  };
 
   const handleLogout = () => {
     auth.logout();
@@ -44,6 +94,7 @@ const DashboardHeader = ({
   const handleSettingsClick = () => {
     navigate("/admin/settings");
   };
+
   return (
     <header className="bg-white border-b border-gray-200 p-4 flex items-center justify-between w-full h-20 shadow-sm">
       <div className="flex items-center">
@@ -78,27 +129,47 @@ const DashboardHeader = ({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-80">
-            <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+            <DropdownMenuLabel className="flex justify-between items-center">
+              <span>Notifications</span>
+              {notificationCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={markNotificationsAsRead}
+                  className="text-xs h-7"
+                >
+                  Mark all as read
+                </Button>
+              )}
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <div className="max-h-80 overflow-y-auto">
-              <DropdownMenuItem className="cursor-pointer">
-                <div className="flex flex-col space-y-1">
-                  <p className="font-medium">New user registered</p>
-                  <p className="text-sm text-gray-500">2 minutes ago</p>
+              {loading ? (
+                <div className="p-4 text-center text-sm text-gray-500">
+                  Loading notifications...
                 </div>
-              </DropdownMenuItem>
-              <DropdownMenuItem className="cursor-pointer">
-                <div className="flex flex-col space-y-1">
-                  <p className="font-medium">Context rule updated</p>
-                  <p className="text-sm text-gray-500">1 hour ago</p>
+              ) : notifications.length === 0 ? (
+                <div className="p-4 text-center text-sm text-gray-500">
+                  No new notifications
                 </div>
-              </DropdownMenuItem>
-              <DropdownMenuItem className="cursor-pointer">
-                <div className="flex flex-col space-y-1">
-                  <p className="font-medium">New analytics report available</p>
-                  <p className="text-sm text-gray-500">Yesterday</p>
-                </div>
-              </DropdownMenuItem>
+              ) : (
+                notifications.map((notification) => (
+                  <DropdownMenuItem
+                    key={notification.id}
+                    className="cursor-pointer"
+                  >
+                    <div className="flex flex-col space-y-1">
+                      <p className="font-medium">{notification.title}</p>
+                      <p className="text-sm text-gray-500">
+                        {notification.message}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {new Date(notification.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                  </DropdownMenuItem>
+                ))
+              )}
             </div>
             <DropdownMenuSeparator />
             <DropdownMenuItem className="cursor-pointer text-center text-primary">
@@ -117,16 +188,18 @@ const DashboardHeader = ({
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center space-x-2">
               <Avatar className="h-8 w-8">
-                <AvatarImage src={userAvatar} alt={username} />
+                <AvatarImage src={auth.user?.avatar} alt={auth.user?.name} />
                 <AvatarFallback className="bg-primary/10 text-primary">
-                  {username
-                    .split(" ")
-                    .map((n) => n[0])
-                    .join("")}
+                  {auth.user?.name
+                    ? auth.user.name
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")
+                    : "U"}
                 </AvatarFallback>
               </Avatar>
               <span className="font-medium text-sm hidden md:inline-block">
-                {username}
+                {auth.user?.name || "User"}
               </span>
             </Button>
           </DropdownMenuTrigger>

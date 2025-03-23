@@ -30,7 +30,12 @@ export default defineConfig({
   },
   optimizeDeps: {
     entries: ["src/main.tsx", "src/tempobook/**/*"],
+    include: ["uuid"],
     exclude: ["pg-hstore", "sequelize", "mysql2", "ws", "bcryptjs"],
+  },
+  ssr: {
+    // Exclude server-only modules from client build
+    noExternal: ["sequelize", "mysql2"],
   },
   plugins: [
     react({

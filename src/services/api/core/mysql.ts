@@ -2,7 +2,6 @@
  * MySQL Core Service
  *
  * This module provides a centralized MySQL client for the API layer
- * to replace the Supabase client throughout the application.
  */
 
 import { getMySQLClient } from "@/services/mysqlClient";
@@ -16,7 +15,7 @@ let mysqlClient: any = null;
  */
 export const initMySQLClient = async (): Promise<void> => {
   try {
-    mysqlClient = getMySQLClient();
+    mysqlClient = await getMySQLClient();
     await mysqlClient.authenticate();
     logger.info("MySQL client initialized for API layer");
   } catch (error) {
@@ -28,9 +27,9 @@ export const initMySQLClient = async (): Promise<void> => {
 /**
  * Get the MySQL client instance
  */
-export const getMySQLClientForAPI = () => {
+export const getMySQLClientForAPI = async () => {
   if (!mysqlClient) {
-    initMySQLClient().catch((error) => {
+    await initMySQLClient().catch((error) => {
       logger.error("Failed to initialize MySQL client on demand", error);
     });
   }
@@ -43,15 +42,52 @@ export const getMySQLClientForAPI = () => {
 export const executeQuery = async (
   sql: string,
   replacements?: any[],
+  queryType: string = "SELECT",
 ): Promise<any> => {
   try {
-    const client = getMySQLClientForAPI();
-    const [results] = await client.query(sql, {
+    const client = await getMySQLClientForAPI();
+    const results = await client.query(sql, {
       replacements,
+      type:
+        client.QueryTypes[queryType as keyof typeof client.QueryTypes] ||
+        client.QueryTypes.SELECT,
     });
     return results;
   } catch (error) {
     logger.error(`Error executing query: ${sql}`, error);
+    throw error;
+  }
+};
+
+/**
+ * Execute a transaction with multiple queries
+ */
+export const executeTransaction = async (
+  queries: { sql: string; replacements: any[]; queryType: string }[],
+): Promise<any[]> => {
+  const client = await getMySQLClientForAPI();
+  const transaction = await client.transaction();
+
+  try {
+    const results = [];
+
+    for (const query of queries) {
+      const result = await client.query(query.sql, {
+        replacements: query.replacements,
+        type:
+          client.QueryTypes[
+            query.queryType as keyof typeof client.QueryTypes
+          ] || client.QueryTypes.SELECT,
+        transaction,
+      });
+      results.push(result);
+    }
+
+    await transaction.commit();
+    return results;
+  } catch (error) {
+    await transaction.rollback();
+    logger.error("MySQL transaction error", error);
     throw error;
   }
 };
@@ -71,5 +107,6 @@ export default {
   initMySQLClient,
   getMySQLClientForAPI,
   executeQuery,
+  executeTransaction,
   closeMySQLConnection,
 };

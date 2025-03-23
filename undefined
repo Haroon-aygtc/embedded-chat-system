@@ -1,0 +1,12 @@
+import React from 'react';
+import AIInteractionLogs from '@/components/admin/AIInteractionLogs';
+
+const AIInteractionLogsStoryboard = () => {
+  return (
+    <div className="p-4 bg-background min-h-screen">
+      <AIInteractionLogs />
+    </div>
+  );
+};
+
+export default AIInteractionLogsStoryboard;

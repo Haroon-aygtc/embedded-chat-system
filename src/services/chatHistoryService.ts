@@ -2,6 +2,7 @@ import { ChatMessage, ChatSession } from "@/models";
 import { Message } from "@/types/chat";
 import { v4 as uuidv4 } from "uuid";
 import logger from "@/utils/logger";
+import { getMySQLClient } from "./mysqlClient";
 
 export interface ChatHistoryParams {
   userId: string;
@@ -38,7 +39,7 @@ export const chatHistoryService = {
         id: messageId,
         user_id: userId,
         content: message.content,
-        sender: message.sender,
+        type: message.sender, // Using 'type' field for sender type as per model definition
         context_rule_id: message.contextRuleId || null,
         model_used: message.modelUsed || null,
         metadata: message.metadata || {},
@@ -48,7 +49,7 @@ export const chatHistoryService = {
       return {
         id: newMessage.id,
         content: newMessage.content,
-        sender: newMessage.sender as "user" | "assistant",
+        sender: newMessage.type as "user" | "assistant",
         timestamp: new Date(newMessage.created_at),
         status: "sent",
         metadata: newMessage.metadata,
@@ -76,6 +77,8 @@ export const chatHistoryService = {
   }> => {
     try {
       const offset = (page - 1) * pageSize;
+      const sequelize = getMySQLClient();
+      const Op = sequelize.Op;
 
       // Build the query conditions
       const whereClause: any = { user_id: userId };

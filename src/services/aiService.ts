@@ -3,9 +3,9 @@ import { ContextRule } from "@/types/contextRules";
 import { PromptTemplate } from "@/types/promptTemplates";
 import logger from "@/utils/logger";
 import knowledgeBaseService from "./knowledgeBaseService";
-import supabase from "./supabaseClient";
 import apiKeyService from "./apiKeyService";
 import aiCacheService from "./aiCacheService";
+import { getMySQLClient } from "./mysqlClient";
 
 // Define the AI model types
 type AIModel = "gemini" | "huggingface";
@@ -627,24 +627,125 @@ export const aiService = {
     contextRuleId?: string,
   ): Promise<void> => {
     try {
-      const { error } = await supabase.from("ai_interaction_logs").insert({
-        user_id: userId,
-        query: query,
-        response: response.content,
-        model_used: response.modelUsed,
-        context_rule_id: contextRuleId || null,
-        metadata: response.metadata || {},
-        created_at: new Date().toISOString(),
-      });
+      const sequelize = await getMySQLClient();
 
-      if (error) {
-        logger.error("Error logging AI interaction", error);
-      }
+      await sequelize.query(
+        `INSERT INTO ai_interaction_logs 
+         (id, user_id, query, response, model_used, context_rule_id, metadata, created_at) 
+         VALUES (UUID(), ?, ?, ?, ?, ?, ?, NOW())`,
+        {
+          replacements: [
+            userId,
+            query,
+            response.content,
+            response.modelUsed,
+            contextRuleId || null,
+            JSON.stringify(response.metadata || {}),
+          ],
+          type: sequelize.QueryTypes.INSERT,
+        },
+      );
     } catch (error) {
       logger.error(
         "Error logging AI interaction",
         error instanceof Error ? error : new Error(String(error)),
       );
+    }
+  },
+
+  /**
+   * Get AI interaction logs for admin dashboard
+   */
+  getAIInteractionLogs: async (
+    params: any = {},
+  ): Promise<{
+    logs: any[];
+    totalPages: number;
+  }> => {
+    try {
+      const page = params.page || 1;
+      const pageSize = params.pageSize || 10;
+      const offset = (page - 1) * pageSize;
+
+      // Build query conditions
+      const conditions = [];
+      const replacements: any[] = [];
+
+      if (params.userId) {
+        conditions.push("l.user_id = ?");
+        replacements.push(params.userId);
+      }
+
+      if (params.modelUsed) {
+        conditions.push("l.model_used = ?");
+        replacements.push(params.modelUsed);
+      }
+
+      if (params.contextRuleId !== undefined) {
+        if (params.contextRuleId === "null") {
+          conditions.push("l.context_rule_id IS NULL");
+        } else {
+          conditions.push("l.context_rule_id = ?");
+          replacements.push(params.contextRuleId);
+        }
+      }
+
+      if (params.startDate) {
+        conditions.push("l.created_at >= ?");
+        replacements.push(params.startDate);
+      }
+
+      if (params.endDate) {
+        conditions.push("l.created_at <= ?");
+        replacements.push(params.endDate);
+      }
+
+      if (params.query) {
+        conditions.push("(l.query LIKE ? OR l.response LIKE ?)");
+        replacements.push(`%${params.query}%`, `%${params.query}%`);
+      }
+
+      const whereClause =
+        conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+      const sequelize = await getMySQLClient();
+
+      // Get total count for pagination
+      const [countResult] = await sequelize.query(
+        `SELECT COUNT(*) as total FROM ai_interaction_logs l ${whereClause}`,
+        {
+          replacements,
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
+
+      const totalCount = (countResult as any).total || 0;
+      const totalPages = Math.ceil(totalCount / pageSize);
+
+      // Get logs with pagination
+      const logs = await sequelize.query(
+        `SELECT l.*, c.name as context_rule_name 
+         FROM ai_interaction_logs l
+         LEFT JOIN context_rules c ON l.context_rule_id = c.id
+         ${whereClause} 
+         ORDER BY l.created_at DESC
+         LIMIT ? OFFSET ?`,
+        {
+          replacements: [...replacements, pageSize, offset],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
+
+      return {
+        logs: logs || [],
+        totalPages,
+      };
+    } catch (error) {
+      logger.error("Error fetching AI interaction logs", error);
+      return {
+        logs: [],
+        totalPages: 0,
+      };
     }
   },
 };

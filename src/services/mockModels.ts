@@ -1,92 +1,57 @@
 /**
- * Mock models for client-side use
- *
- * This file provides browser-compatible mock implementations of the database models
- * to be used in client-side code instead of directly importing from src/models/index.ts
+ * DEPRECATED: This file is no longer used and should not be imported.
+ * All data should come from real MySQL database connections.
  */
 
-// Mock User model
-export class User {
-  static findAll() {
-    return Promise.resolve([]);
-  }
+import logger from "@/utils/logger";
 
-  static findOne() {
-    return Promise.resolve(null);
-  }
+// Log a warning if this file is imported
+logger.error(
+  "mockModels.ts is deprecated and should not be used. Use real MySQL data instead.",
+);
 
-  static findByPk() {
-    return Promise.resolve(null);
-  }
+// Throw an error if any function is called
+const errorMessage = "Mock models are deprecated. Use real MySQL data instead.";
 
-  static create() {
-    return Promise.resolve({});
-  }
-}
+// Export empty interfaces to prevent TypeScript errors during migration
+export interface ContextRule {}
+export interface WidgetConfig {}
+export interface SystemSetting {}
+export interface User {}
 
-// Mock ContextRule model
-export class ContextRule {
-  static findAll() {
-    return Promise.resolve([]);
-  }
-
-  static findOne() {
-    return Promise.resolve(null);
-  }
-
-  static findByPk() {
-    return Promise.resolve(null);
-  }
-
-  static create() {
-    return Promise.resolve({});
-  }
-}
-
-// Mock WidgetConfig model
-export class WidgetConfig {
-  static findAll() {
-    return Promise.resolve([]);
-  }
-
-  static findOne() {
-    return Promise.resolve(null);
-  }
-
-  static findByPk() {
-    return Promise.resolve(null);
-  }
-
-  static create() {
-    return Promise.resolve({});
-  }
-}
-
-// Mock SystemSetting model
-export class SystemSetting {
-  static findAll() {
-    return Promise.resolve([]);
-  }
-
-  static findOne() {
-    return Promise.resolve(null);
-  }
-
-  static findByPk() {
-    return Promise.resolve(null);
-  }
-
-  static create() {
-    return Promise.resolve({});
-  }
-}
-
-// Export mock models
-const models = {
-  User,
-  ContextRule,
-  WidgetConfig,
-  SystemSetting,
+// Export functions that throw errors when called
+export const findAll = async () => {
+  throw new Error(errorMessage);
 };
+
+export const findByPk = async (id: string) => {
+  throw new Error(errorMessage);
+};
+
+export const findOne = async (options: any) => {
+  throw new Error(errorMessage);
+};
+
+export const create = async (data: any) => {
+  throw new Error(errorMessage);
+};
+
+export const update = async (data: any) => {
+  throw new Error(errorMessage);
+};
+
+export const destroy = async () => {
+  throw new Error(errorMessage);
+};
+
+// Export a mock models object that throws errors when used
+const models = new Proxy(
+  {},
+  {
+    get: function () {
+      throw new Error(errorMessage);
+    },
+  },
+);
 
 export default models;

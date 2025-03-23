@@ -1,6 +1,7 @@
 import axios from "axios";
 import logger from "@/utils/logger";
-import supabase from "./supabaseClient";
+import { getMySQLClient } from "./mysqlClient";
+import { v4 as uuidv4 } from "uuid";
 
 export interface KnowledgeBaseConfig {
   id: string;
@@ -45,14 +46,13 @@ class KnowledgeBaseService {
    */
   async getAllConfigs(): Promise<KnowledgeBaseConfig[]> {
     try {
-      const { data, error } = await supabase
-        .from("knowledge_base_configs")
-        .select("*")
-        .order("name");
+      const sequelize = await getMySQLClient();
+      const configs = await sequelize.query(
+        `SELECT * FROM knowledge_base_configs ORDER BY name`,
+        { type: sequelize.QueryTypes.SELECT },
+      );
 
-      if (error) throw error;
-
-      return data.map(this.mapConfigFromDb);
+      return configs.map(this.mapConfigFromDb);
     } catch (error) {
       logger.error("Error fetching knowledge base configs", error);
       return [];
@@ -64,15 +64,17 @@ class KnowledgeBaseService {
    */
   async getConfigById(id: string): Promise<KnowledgeBaseConfig | null> {
     try {
-      const { data, error } = await supabase
-        .from("knowledge_base_configs")
-        .select("*")
-        .eq("id", id)
-        .single();
+      const sequelize = await getMySQLClient();
+      const [config] = await sequelize.query(
+        `SELECT * FROM knowledge_base_configs WHERE id = ?`,
+        {
+          replacements: [id],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
 
-      if (error) throw error;
-
-      return this.mapConfigFromDb(data);
+      if (!config) return null;
+      return this.mapConfigFromDb(config);
     } catch (error) {
       logger.error(`Error fetching knowledge base config with ID ${id}`, error);
       return null;
@@ -87,22 +89,51 @@ class KnowledgeBaseService {
   ): Promise<KnowledgeBaseConfig | null> {
     try {
       const now = new Date().toISOString();
+      const id = uuidv4();
       const newConfig = {
-        id: crypto.randomUUID(),
+        id,
         ...config,
         created_at: now,
         updated_at: now,
       };
 
-      const { data, error } = await supabase
-        .from("knowledge_base_configs")
-        .insert(this.mapConfigToDb(newConfig))
-        .select()
-        .single();
+      const sequelize = await getMySQLClient();
+      const dbConfig = this.mapConfigToDb(newConfig);
 
-      if (error) throw error;
+      await sequelize.query(
+        `INSERT INTO knowledge_base_configs 
+         (id, name, type, endpoint, api_key, connection_string, refresh_interval, 
+          last_synced_at, parameters, is_active, created_at, updated_at) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        {
+          replacements: [
+            id,
+            dbConfig.name,
+            dbConfig.type,
+            dbConfig.endpoint,
+            dbConfig.api_key,
+            dbConfig.connection_string,
+            dbConfig.refresh_interval,
+            dbConfig.last_synced_at,
+            JSON.stringify(dbConfig.parameters || {}),
+            dbConfig.is_active,
+            dbConfig.created_at,
+            dbConfig.updated_at,
+          ],
+          type: sequelize.QueryTypes.INSERT,
+        },
+      );
 
-      return this.mapConfigFromDb(data);
+      // Fetch the newly created config
+      const [createdConfig] = await sequelize.query(
+        `SELECT * FROM knowledge_base_configs WHERE id = ?`,
+        {
+          replacements: [id],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
+
+      return this.mapConfigFromDb(createdConfig);
     } catch (error) {
       logger.error("Error creating knowledge base config", error);
       return null;
@@ -122,16 +153,85 @@ class KnowledgeBaseService {
         updated_at: new Date().toISOString(),
       };
 
-      const { data, error } = await supabase
-        .from("knowledge_base_configs")
-        .update(updateData)
-        .eq("id", id)
-        .select()
-        .single();
+      const sequelize = await getMySQLClient();
 
-      if (error) throw error;
+      // Build the update query dynamically
+      const updateFields = [];
+      const replacements = [];
 
-      return this.mapConfigFromDb(data);
+      if (updateData.name !== undefined) {
+        updateFields.push("name = ?");
+        replacements.push(updateData.name);
+      }
+
+      if (updateData.type !== undefined) {
+        updateFields.push("type = ?");
+        replacements.push(updateData.type);
+      }
+
+      if (updateData.endpoint !== undefined) {
+        updateFields.push("endpoint = ?");
+        replacements.push(updateData.endpoint);
+      }
+
+      if (updateData.api_key !== undefined) {
+        updateFields.push("api_key = ?");
+        replacements.push(updateData.api_key);
+      }
+
+      if (updateData.connection_string !== undefined) {
+        updateFields.push("connection_string = ?");
+        replacements.push(updateData.connection_string);
+      }
+
+      if (updateData.refresh_interval !== undefined) {
+        updateFields.push("refresh_interval = ?");
+        replacements.push(updateData.refresh_interval);
+      }
+
+      if (updateData.last_synced_at !== undefined) {
+        updateFields.push("last_synced_at = ?");
+        replacements.push(updateData.last_synced_at);
+      }
+
+      if (updateData.parameters !== undefined) {
+        updateFields.push("parameters = ?");
+        replacements.push(JSON.stringify(updateData.parameters));
+      }
+
+      if (updateData.is_active !== undefined) {
+        updateFields.push("is_active = ?");
+        replacements.push(updateData.is_active);
+      }
+
+      // Always update the updated_at timestamp
+      updateFields.push("updated_at = ?");
+      replacements.push(updateData.updated_at);
+
+      // Add the ID to the replacements
+      replacements.push(id);
+
+      if (updateFields.length > 0) {
+        await sequelize.query(
+          `UPDATE knowledge_base_configs SET ${updateFields.join(", ")} WHERE id = ?`,
+          {
+            replacements,
+            type: sequelize.QueryTypes.UPDATE,
+          },
+        );
+      }
+
+      // Fetch the updated config
+      const [updatedConfig] = await sequelize.query(
+        `SELECT * FROM knowledge_base_configs WHERE id = ?`,
+        {
+          replacements: [id],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
+
+      if (!updatedConfig) return null;
+      return this.mapConfigFromDb(updatedConfig);
     } catch (error) {
       logger.error(`Error updating knowledge base config with ID ${id}`, error);
       return null;
@@ -143,12 +243,12 @@ class KnowledgeBaseService {
    */
   async deleteConfig(id: string): Promise<boolean> {
     try {
-      const { error } = await supabase
-        .from("knowledge_base_configs")
-        .delete()
-        .eq("id", id);
+      const sequelize = await getMySQLClient();
 
-      if (error) throw error;
+      await sequelize.query(`DELETE FROM knowledge_base_configs WHERE id = ?`, {
+        replacements: [id],
+        type: sequelize.QueryTypes.DELETE,
+      });
 
       return true;
     } catch (error) {
@@ -198,40 +298,46 @@ class KnowledgeBaseService {
     contextRuleId?: string,
   ): Promise<KnowledgeBaseConfig[]> {
     try {
+      const sequelize = await getMySQLClient();
+
       if (!contextRuleId) {
         // If no context rule specified, get all active knowledge bases
-        const { data, error } = await supabase
-          .from("knowledge_base_configs")
-          .select("*")
-          .eq("is_active", true);
+        const configs = await sequelize.query(
+          `SELECT * FROM knowledge_base_configs WHERE is_active = true`,
+          { type: sequelize.QueryTypes.SELECT },
+        );
 
-        if (error) throw error;
-        return data.map(this.mapConfigFromDb);
+        return configs.map(this.mapConfigFromDb);
       }
 
       // Get knowledge bases linked to the context rule
-      const { data, error } = await supabase
-        .from("context_rule_knowledge_bases")
-        .select("knowledge_base_id")
-        .eq("context_rule_id", contextRuleId);
+      const linkedKbs = await sequelize.query(
+        `SELECT knowledge_base_id FROM context_rule_knowledge_bases WHERE context_rule_id = ?`,
+        {
+          replacements: [contextRuleId],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
 
-      if (error) throw error;
-
-      if (data.length === 0) {
+      if (linkedKbs.length === 0) {
         return [];
       }
 
       // Get the actual knowledge base configs
-      const kbIds = data.map((item) => item.knowledge_base_id);
-      const { data: kbData, error: kbError } = await supabase
-        .from("knowledge_base_configs")
-        .select("*")
-        .in("id", kbIds)
-        .eq("is_active", true);
+      const kbIds = linkedKbs.map((item: any) => item.knowledge_base_id);
 
-      if (kbError) throw kbError;
+      // Build the IN clause safely
+      const placeholders = kbIds.map(() => "?").join(",");
 
-      return kbData.map(this.mapConfigFromDb);
+      const configs = await sequelize.query(
+        `SELECT * FROM knowledge_base_configs WHERE id IN (${placeholders}) AND is_active = true`,
+        {
+          replacements: [...kbIds],
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
+
+      return configs.map(this.mapConfigFromDb);
     } catch (error) {
       logger.error("Error getting knowledge bases for context rule", error);
       return [];
@@ -359,19 +465,22 @@ class KnowledgeBaseService {
       // 4. Transform the results to QueryResult format
 
       // For now, we'll use a direct Supabase query if the connection string is a Supabase URL
-      if (kb.connectionString.includes("supabase")) {
+      if (kb.connectionString.includes("mysql")) {
         try {
           // Extract table name from parameters
           const tableName = kb.parameters?.table || "documents";
           const searchColumn = kb.parameters?.searchColumn || "content";
 
-          const { data, error } = await supabase
-            .from(tableName)
-            .select("*")
-            .textSearch(searchColumn, params.query)
-            .limit(params.limit || 5);
+          const sequelize = await getMySQLClient();
 
-          if (error) throw error;
+          // Use MATCH AGAINST for full-text search if available, otherwise fallback to LIKE
+          const data = await sequelize.query(
+            `SELECT * FROM ${tableName} WHERE ${searchColumn} LIKE ? LIMIT ?`,
+            {
+              replacements: [`%${params.query}%`, params.limit || 5],
+              type: sequelize.QueryTypes.SELECT,
+            },
+          );
 
           if (data && data.length > 0) {
             const results: QueryResult[] = data.map((item) => ({
@@ -850,15 +959,25 @@ class KnowledgeBaseService {
     results: number;
   }): Promise<void> {
     try {
-      await supabase.from("knowledge_base_query_logs").insert({
-        id: crypto.randomUUID(),
-        user_id: params.userId,
-        query: params.query,
-        context_rule_id: params.contextRuleId,
-        knowledge_base_ids: params.knowledgeBaseIds,
-        results_count: params.results,
-        created_at: new Date().toISOString(),
-      });
+      const sequelize = await getMySQLClient();
+
+      await sequelize.query(
+        `INSERT INTO knowledge_base_query_logs 
+         (id, user_id, query, context_rule_id, knowledge_base_ids, results_count, created_at) 
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        {
+          replacements: [
+            uuidv4(),
+            params.userId,
+            params.query,
+            params.contextRuleId || null,
+            params.knowledgeBaseIds.join(","),
+            params.results,
+            new Date().toISOString(),
+          ],
+          type: sequelize.QueryTypes.INSERT,
+        },
+      );
     } catch (error) {
       logger.error("Error logging knowledge base query", error);
     }
