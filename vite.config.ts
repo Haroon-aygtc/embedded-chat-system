@@ -16,8 +16,21 @@ export default defineConfig({
     process.env.NODE_ENV === "development"
       ? "/"
       : process.env.VITE_BASE_PATH || "/",
+  define: {
+    // Polyfill for Node.js Buffer used by sequelize and other packages
+    global: {},
+    "process.env": {},
+    Buffer: ["buffer", "Buffer"],
+  },
+  build: {
+    commonjsOptions: {
+      // Explicitly exclude Node.js modules that cause issues in the browser
+      exclude: ["sequelize", "mysql2", "pg-hstore", "ws", "bcryptjs"],
+    },
+  },
   optimizeDeps: {
     entries: ["src/main.tsx", "src/tempobook/**/*"],
+    exclude: ["pg-hstore", "sequelize", "mysql2", "ws", "bcryptjs"],
   },
   plugins: [
     react({
@@ -29,6 +42,10 @@ export default defineConfig({
     preserveSymlinks: true,
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      buffer: "buffer/",
+      stream: "stream-browserify",
+      util: "util/",
+      process: "process/browser",
     },
   },
   server: {

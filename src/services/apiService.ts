@@ -1,8 +1,7 @@
 import axios from "axios";
 import { env } from "@/config/env";
 import logger from "@/utils/logger";
-import { ContextRule } from "@/models";
-import { User, WidgetConfig, SystemSetting } from "@/models";
+import { ContextRule, User, WidgetConfig, SystemSetting } from "./mockModels";
 
 // Create axios instance with base URL
 const api = axios.create({
