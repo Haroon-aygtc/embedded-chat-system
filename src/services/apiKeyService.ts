@@ -1,4 +1,4 @@
-import supabase from "./supabaseClient";
+import { SystemSetting } from "@/models";
 import { env } from "../config/env";
 import logger from "../utils/logger";
 
@@ -20,19 +20,19 @@ const apiKeyService = {
       }
 
       // If not in env, try to fetch from database
-      const { data, error } = await supabase
-        .from("system_settings")
-        .select("settings")
-        .eq("category", "api_keys")
-        .eq("environment", env.MODE || "development")
-        .single();
+      const systemSetting = await SystemSetting.findOne({
+        where: {
+          category: "api_keys",
+          environment: env.MODE || "development",
+        },
+      });
 
-      if (error) {
-        logger.error("Error fetching Gemini API key", error);
+      if (!systemSetting) {
+        logger.warn("No API key settings found in database");
         return null;
       }
 
-      return data?.settings?.gemini_api_key || null;
+      return systemSetting.settings?.gemini_api_key || null;
     } catch (error) {
       logger.error("Error fetching Gemini API key", error);
       return null;
@@ -52,19 +52,19 @@ const apiKeyService = {
       }
 
       // If not in env, try to fetch from database
-      const { data, error } = await supabase
-        .from("system_settings")
-        .select("settings")
-        .eq("category", "api_keys")
-        .eq("environment", env.MODE || "development")
-        .single();
+      const systemSetting = await SystemSetting.findOne({
+        where: {
+          category: "api_keys",
+          environment: env.MODE || "development",
+        },
+      });
 
-      if (error) {
-        logger.error("Error fetching Hugging Face API key", error);
+      if (!systemSetting) {
+        logger.warn("No API key settings found in database");
         return null;
       }
 
-      return data?.settings?.huggingface_api_key || null;
+      return systemSetting.settings?.huggingface_api_key || null;
     } catch (error) {
       logger.error("Error fetching Hugging Face API key", error);
       return null;
@@ -81,49 +81,31 @@ const apiKeyService = {
   ): Promise<boolean> => {
     try {
       // First check if a record exists
-      const { data: existingData, error: fetchError } = await supabase
-        .from("system_settings")
-        .select("*")
-        .eq("category", "api_keys")
-        .eq("environment", environment)
-        .single();
+      const existingSettings = await SystemSetting.findOne({
+        where: {
+          category: "api_keys",
+          environment,
+        },
+      });
 
-      if (fetchError && fetchError.code !== "PGRST116") {
-        // PGRST116 is the error code for "no rows found"
-        logger.error("Error fetching API key settings", fetchError);
-        return false;
-      }
-
-      const settings = existingData?.settings || {};
+      const settings = existingSettings?.settings || {};
       settings[`${keyType}_api_key`] = apiKey;
 
-      if (existingData) {
+      if (existingSettings) {
         // Update existing record
-        const { error: updateError } = await supabase
-          .from("system_settings")
-          .update({ settings })
-          .eq("id", existingData.id);
-
-        if (updateError) {
-          logger.error("Error updating API key", updateError);
-          return false;
-        }
+        await existingSettings.update({
+          settings,
+          updated_at: new Date(),
+        });
       } else {
         // Insert new record
-        const { error: insertError } = await supabase
-          .from("system_settings")
-          .insert([
-            {
-              category: "api_keys",
-              environment,
-              settings,
-            },
-          ]);
-
-        if (insertError) {
-          logger.error("Error inserting API key", insertError);
-          return false;
-        }
+        await SystemSetting.create({
+          category: "api_keys",
+          environment,
+          settings,
+          created_at: new Date(),
+          updated_at: new Date(),
+        });
       }
 
       return true;

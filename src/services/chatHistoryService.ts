@@ -1,6 +1,7 @@
-import supabase from "./supabaseClient";
+import { ChatMessage, ChatSession } from "@/models";
 import { Message } from "@/types/chat";
 import { v4 as uuidv4 } from "uuid";
+import logger from "@/utils/logger";
 
 export interface ChatHistoryParams {
   userId: string;
@@ -29,12 +30,11 @@ export const chatHistoryService = {
     userId: string,
     message: MessageToStore,
   ): Promise<Message> => {
-    const messageId = uuidv4();
-    const timestamp = new Date().toISOString();
+    try {
+      const messageId = uuidv4();
+      const timestamp = new Date();
 
-    const { data, error } = await supabase
-      .from("chat_messages")
-      .insert({
+      const newMessage = await ChatMessage.create({
         id: messageId,
         user_id: userId,
         content: message.content,
@@ -43,23 +43,22 @@ export const chatHistoryService = {
         model_used: message.modelUsed || null,
         metadata: message.metadata || {},
         created_at: timestamp,
-      })
-      .select()
-      .single();
+      });
 
-    if (error) {
-      console.error("Error storing message:", error);
-      throw new Error(`Failed to store message: ${error.message}`);
+      return {
+        id: newMessage.id,
+        content: newMessage.content,
+        sender: newMessage.sender as "user" | "assistant",
+        timestamp: new Date(newMessage.created_at),
+        status: "sent",
+        metadata: newMessage.metadata,
+      };
+    } catch (error) {
+      logger.error("Error storing message:", error);
+      throw new Error(
+        `Failed to store message: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
-
-    return {
-      id: data.id,
-      content: data.content,
-      sender: data.sender as "user" | "assistant",
-      timestamp: new Date(data.created_at),
-      status: "sent",
-      metadata: data.metadata,
-    };
   },
 
   /**
@@ -75,48 +74,45 @@ export const chatHistoryService = {
     messages: Message[];
     totalCount: number;
   }> => {
-    const startIndex = (page - 1) * pageSize;
+    try {
+      const offset = (page - 1) * pageSize;
 
-    // Build the query
-    let query = supabase
-      .from("chat_messages")
-      .select("*", { count: "exact" })
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true });
+      // Build the query conditions
+      const whereClause: any = { user_id: userId };
+      if (sessionId) whereClause.session_id = sessionId;
+      if (contextRuleId) whereClause.context_rule_id = contextRuleId;
 
-    // Add filters if provided
-    if (sessionId) {
-      query = query.eq("session_id", sessionId);
+      // Get total count
+      const totalCount = await ChatMessage.count({ where: whereClause });
+
+      // Get messages with pagination
+      const chatMessages = await ChatMessage.findAll({
+        where: whereClause,
+        order: [["created_at", "ASC"]],
+        limit: pageSize,
+        offset: offset,
+      });
+
+      // Transform the data to match the Message interface
+      const messages = chatMessages.map((item) => ({
+        id: item.id,
+        content: item.content,
+        sender: item.type as "user" | "assistant",
+        timestamp: new Date(item.created_at),
+        status: "sent",
+        metadata: item.metadata,
+      }));
+
+      return {
+        messages,
+        totalCount,
+      };
+    } catch (error) {
+      logger.error("Error retrieving chat history:", error);
+      throw new Error(
+        `Failed to retrieve chat history: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
-
-    if (contextRuleId) {
-      query = query.eq("context_rule_id", contextRuleId);
-    }
-
-    // Add pagination
-    query = query.range(startIndex, startIndex + pageSize - 1);
-
-    const { data, error, count } = await query;
-
-    if (error) {
-      console.error("Error retrieving chat history:", error);
-      throw new Error(`Failed to retrieve chat history: ${error.message}`);
-    }
-
-    // Transform the data to match the Message interface
-    const messages = data.map((item) => ({
-      id: item.id,
-      content: item.content,
-      sender: item.sender as "user" | "assistant",
-      timestamp: new Date(item.created_at),
-      status: "sent",
-      metadata: item.metadata,
-    }));
-
-    return {
-      messages,
-      totalCount: count || 0,
-    };
   },
 
   /**
@@ -126,17 +122,16 @@ export const chatHistoryService = {
     userId: string,
     contextRuleId?: string,
   ): Promise<void> => {
-    let query = supabase.from("chat_messages").delete().eq("user_id", userId);
+    try {
+      const whereClause: any = { user_id: userId };
+      if (contextRuleId) whereClause.context_rule_id = contextRuleId;
 
-    if (contextRuleId) {
-      query = query.eq("context_rule_id", contextRuleId);
-    }
-
-    const { error } = await query;
-
-    if (error) {
-      console.error("Error deleting chat history:", error);
-      throw new Error(`Failed to delete chat history: ${error.message}`);
+      await ChatMessage.destroy({ where: whereClause });
+    } catch (error) {
+      logger.error("Error deleting chat history:", error);
+      throw new Error(
+        `Failed to delete chat history: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   },
 
@@ -147,37 +142,46 @@ export const chatHistoryService = {
     userId: string,
     contextRuleId?: string,
   ): Promise<string> => {
-    const sessionId = uuidv4();
-    const timestamp = new Date().toISOString();
+    try {
+      const sessionId = uuidv4();
+      const timestamp = new Date();
 
-    const { error } = await supabase.from("chat_sessions").insert({
-      id: sessionId,
-      user_id: userId,
-      context_rule_id: contextRuleId || null,
-      created_at: timestamp,
-      last_activity: timestamp,
-    });
+      await ChatSession.create({
+        id: sessionId,
+        user_id: userId,
+        context_rule_id: contextRuleId || null,
+        created_at: timestamp,
+        updated_at: timestamp,
+        status: "active",
+      });
 
-    if (error) {
-      console.error("Error creating chat session:", error);
-      throw new Error(`Failed to create chat session: ${error.message}`);
+      return sessionId;
+    } catch (error) {
+      logger.error("Error creating chat session:", error);
+      throw new Error(
+        `Failed to create chat session: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
-
-    return sessionId;
   },
 
   /**
    * Update the last activity timestamp for a session
    */
   updateSessionActivity: async (sessionId: string): Promise<void> => {
-    const { error } = await supabase
-      .from("chat_sessions")
-      .update({ last_activity: new Date().toISOString() })
-      .eq("id", sessionId);
+    try {
+      const session = await ChatSession.findByPk(sessionId);
+      if (!session) {
+        throw new Error(`Session with ID ${sessionId} not found`);
+      }
 
-    if (error) {
-      console.error("Error updating session activity:", error);
-      throw new Error(`Failed to update session activity: ${error.message}`);
+      await session.update({
+        updated_at: new Date(),
+      });
+    } catch (error) {
+      logger.error("Error updating session activity:", error);
+      throw new Error(
+        `Failed to update session activity: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   },
 };

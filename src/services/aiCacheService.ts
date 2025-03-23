@@ -1,5 +1,6 @@
-import supabase from "./supabaseClient";
+import { getMySQLClient } from "./mysqlClient";
 import logger from "@/utils/logger";
+import { AIResponseCache } from "@/models";
 
 interface CacheEntry {
   prompt: string;
@@ -25,27 +26,30 @@ const aiCacheService = {
       // Create a hash of the prompt for efficient lookup
       const promptHash = await createHash(prompt);
 
-      const now = new Date().toISOString();
+      const now = new Date();
 
-      const { data, error } = await supabase
-        .from("ai_response_cache")
-        .select("*")
-        .eq("prompt_hash", promptHash)
-        .eq("model_used", model || "default")
-        .gt("expires_at", now)
-        .maybeSingle();
+      // Find cache entry in database
+      const cacheEntry = await AIResponseCache.findOne({
+        where: {
+          prompt_hash: promptHash,
+          model_used: model || "default",
+          expires_at: {
+            [Symbol.for("gt")]: now,
+          },
+        },
+      });
 
-      if (error || !data) {
+      if (!cacheEntry) {
         return null;
       }
 
       return {
-        prompt: data.prompt,
-        response: data.response,
-        modelUsed: data.model_used,
-        metadata: data.metadata,
-        createdAt: data.created_at,
-        expiresAt: data.expires_at,
+        prompt: cacheEntry.prompt,
+        response: cacheEntry.response,
+        modelUsed: cacheEntry.model_used,
+        metadata: cacheEntry.metadata,
+        createdAt: cacheEntry.created_at.toISOString(),
+        expiresAt: cacheEntry.expires_at.toISOString(),
       };
     } catch (error) {
       logger.error(
@@ -74,48 +78,33 @@ const aiCacheService = {
       const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
 
       // Check if entry already exists
-      const { data: existingData } = await supabase
-        .from("ai_response_cache")
-        .select("id")
-        .eq("prompt_hash", promptHash)
-        .eq("model_used", model)
-        .single();
+      const existingEntry = await AIResponseCache.findOne({
+        where: {
+          prompt_hash: promptHash,
+          model_used: model,
+        },
+      });
 
-      if (existingData) {
+      if (existingEntry) {
         // Update existing cache entry
-        const { error } = await supabase
-          .from("ai_response_cache")
-          .update({
-            response,
-            metadata,
-            updated_at: now.toISOString(),
-            expires_at: expiresAt.toISOString(),
-          })
-          .eq("id", existingData.id);
-
-        if (error) {
-          logger.error("Error updating cached response", error);
-          return false;
-        }
+        await existingEntry.update({
+          response,
+          metadata,
+          updated_at: now,
+          expires_at: expiresAt,
+        });
       } else {
         // Create new cache entry
-        const { error } = await supabase.from("ai_response_cache").insert([
-          {
-            prompt,
-            prompt_hash: promptHash,
-            response,
-            model_used: model,
-            metadata,
-            created_at: now.toISOString(),
-            updated_at: now.toISOString(),
-            expires_at: expiresAt.toISOString(),
-          },
-        ]);
-
-        if (error) {
-          logger.error("Error creating cached response", error);
-          return false;
-        }
+        await AIResponseCache.create({
+          prompt,
+          prompt_hash: promptHash,
+          response,
+          model_used: model,
+          metadata,
+          created_at: now,
+          updated_at: now,
+          expires_at: expiresAt,
+        });
       }
 
       return true;
@@ -133,20 +122,18 @@ const aiCacheService = {
    */
   clearExpiredCache: async (): Promise<number> => {
     try {
-      const now = new Date().toISOString();
+      const now = new Date();
 
-      const { data, error } = await supabase
-        .from("ai_response_cache")
-        .delete()
-        .lt("expires_at", now)
-        .select("id");
+      // Delete expired cache entries
+      const result = await AIResponseCache.destroy({
+        where: {
+          expires_at: {
+            [Symbol.for("lt")]: now,
+          },
+        },
+      });
 
-      if (error) {
-        logger.error("Error clearing expired cache", error);
-        return 0;
-      }
-
-      return data?.length || 0;
+      return result;
     } catch (error) {
       logger.error(
         "Error clearing expired cache",
@@ -164,23 +151,25 @@ const aiCacheService = {
     model?: string,
   ): Promise<number> => {
     try {
-      let query = supabase
-        .from("ai_response_cache")
-        .delete()
-        .ilike("prompt", `%${promptPattern}%`);
+      const sequelize = getMySQLClient();
+      const Op = sequelize.Op;
+
+      const whereClause: any = {
+        prompt: {
+          [Op.like]: `%${promptPattern}%`,
+        },
+      };
 
       if (model) {
-        query = query.eq("model_used", model);
+        whereClause.model_used = model;
       }
 
-      const { data, error } = await query.select("id");
+      // Delete matching cache entries
+      const result = await AIResponseCache.destroy({
+        where: whereClause,
+      });
 
-      if (error) {
-        logger.error("Error invalidating cache", error);
-        return 0;
-      }
-
-      return data?.length || 0;
+      return result;
     } catch (error) {
       logger.error(
         "Error invalidating cache",

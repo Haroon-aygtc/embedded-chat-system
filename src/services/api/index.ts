@@ -6,7 +6,7 @@
  */
 
 // Core API modules
-export * from "./core/supabase";
+export * from "./core/mysql";
 export * from "./core/websocket";
 export * from "./core/realtime";
 

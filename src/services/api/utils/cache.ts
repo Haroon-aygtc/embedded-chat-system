@@ -4,8 +4,9 @@
  * This module provides caching functionality for AI responses and other data.
  */
 
-import { getSupabaseClient } from "../core/supabase";
+import { getMySQLClientForAPI, executeQuery } from "../core/mysql";
 import logger from "@/utils/logger";
+import { AIResponseCache } from "@/models";
 
 // In-memory cache for faster access
 interface MemoryCache {
@@ -53,26 +54,25 @@ export const getCachedResponse = async (
     }
 
     // If not in memory cache, check database
-    const supabase = getSupabaseClient();
-    const { data, error } = await supabase
-      .from("ai_response_cache")
-      .select("*")
-      .eq("cache_key", cacheKey)
-      .gt("expires_at", new Date().toISOString())
-      .maybeSingle();
+    const cacheEntry = await AIResponseCache.findOne({
+      where: {
+        cache_key: cacheKey,
+        expires_at: {
+          [Symbol.for("gt")]: new Date(),
+        },
+      },
+    });
 
-    if (error) throw error;
-
-    if (data) {
+    if (cacheEntry) {
       // Store in memory cache for faster access next time
       memoryCache[cacheKey] = {
         data: {
-          response: data.response,
-          modelUsed: data.model_used,
-          createdAt: data.created_at,
-          metadata: data.metadata,
+          response: cacheEntry.response,
+          modelUsed: cacheEntry.model_used,
+          createdAt: cacheEntry.created_at,
+          metadata: cacheEntry.metadata,
         },
-        expiresAt: new Date(data.expires_at).getTime(),
+        expiresAt: new Date(cacheEntry.expires_at).getTime(),
       };
 
       return memoryCache[cacheKey].data;
@@ -117,19 +117,30 @@ export const cacheResponse = async (
     };
 
     // Store in database for persistence
-    const supabase = getSupabaseClient();
-    await supabase.from("ai_response_cache").upsert(
-      {
+    const existingEntry = await AIResponseCache.findOne({
+      where: { cache_key: cacheKey },
+    });
+
+    if (existingEntry) {
+      await existingEntry.update({
+        response,
+        model_used: model,
+        metadata,
+        updated_at: now,
+        expires_at: expiresAt,
+      });
+    } else {
+      await AIResponseCache.create({
         cache_key: cacheKey,
         query,
         response,
         model_used: model,
         metadata,
-        created_at: now.toISOString(),
-        expires_at: expiresAt.toISOString(),
-      },
-      { onConflict: "cache_key" },
-    );
+        created_at: now,
+        updated_at: now,
+        expires_at: expiresAt,
+      });
+    }
   } catch (error) {
     logger.error("Error caching response", error);
     // Don't throw - caching failures shouldn't break the application
@@ -152,8 +163,9 @@ export const invalidateCache = async (
     delete memoryCache[cacheKey];
 
     // Remove from database
-    const supabase = getSupabaseClient();
-    await supabase.from("ai_response_cache").delete().eq("cache_key", cacheKey);
+    await AIResponseCache.destroy({
+      where: { cache_key: cacheKey },
+    });
   } catch (error) {
     logger.error("Error invalidating cache", error);
     // Don't throw - cache invalidation failures shouldn't break the application
@@ -182,11 +194,14 @@ export const clearCache = async (model?: string): Promise<void> => {
     }
 
     // Clear database cache
-    const supabase = getSupabaseClient();
     if (model) {
-      await supabase.from("ai_response_cache").delete().eq("model_used", model);
+      await AIResponseCache.destroy({
+        where: { model_used: model },
+      });
     } else {
-      await supabase.from("ai_response_cache").delete();
+      await AIResponseCache.destroy({
+        where: {},
+      });
     }
   } catch (error) {
     logger.error("Error clearing cache", error);
@@ -200,30 +215,25 @@ export const clearCache = async (model?: string): Promise<void> => {
  */
 export const getCacheStats = async (): Promise<any> => {
   try {
-    const supabase = getSupabaseClient();
+    const sequelize = getMySQLClientForAPI();
 
     // Get total count
-    const { count, error: countError } = await supabase
-      .from("ai_response_cache")
-      .select("*", { count: "exact", head: true });
-
-    if (countError) throw countError;
+    const totalCount = await AIResponseCache.count();
 
     // Get count by model
-    const { data: modelData, error: modelError } = await supabase
-      .from("ai_response_cache")
-      .select("model_used, count")
-      .group("model_used");
-
-    if (modelError) throw modelError;
+    const modelData = await sequelize.query(
+      "SELECT model_used, COUNT(*) as count FROM ai_response_cache GROUP BY model_used",
+      { type: sequelize.QueryTypes.SELECT },
+    );
 
     // Get expired count
-    const { count: expiredCount, error: expiredError } = await supabase
-      .from("ai_response_cache")
-      .select("*", { count: "exact", head: true })
-      .lt("expires_at", new Date().toISOString());
-
-    if (expiredError) throw expiredError;
+    const expiredCount = await AIResponseCache.count({
+      where: {
+        expires_at: {
+          [Symbol.for("lt")]: new Date(),
+        },
+      },
+    });
 
     // Memory cache stats
     const memoryCacheSize = Object.keys(memoryCache).length;
@@ -232,9 +242,9 @@ export const getCacheStats = async (): Promise<any> => {
     ).length;
 
     return {
-      totalCached: count || 0,
+      totalCached: totalCount || 0,
       expiredCount: expiredCount || 0,
-      activeCount: (count || 0) - (expiredCount || 0),
+      activeCount: (totalCount || 0) - (expiredCount || 0),
       byModel: modelData || [],
       memoryCache: {
         size: memoryCacheSize,
