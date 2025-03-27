@@ -464,7 +464,7 @@ class KnowledgeBaseService {
       // 3. Execute a query based on the params.query
       // 4. Transform the results to QueryResult format
 
-      // For now, we'll use a direct Supabase query if the connection string is a Supabase URL
+      // For now, we'll use a direct MySQL query if the connection string is a MySQL URL
       if (kb.connectionString.includes("mysql")) {
         try {
           // Extract table name from parameters
@@ -504,7 +504,7 @@ class KnowledgeBaseService {
             return results;
           }
         } catch (dbError) {
-          logger.error(`Error querying Supabase database: ${dbError}`);
+          logger.error(`Error querying MySQL database: ${dbError}`);
           // Fall through to return empty results
         }
       }
@@ -823,10 +823,10 @@ class KnowledgeBaseService {
         }
       }
 
-      // If we're using Supabase storage, we could potentially query that
-      if (kb.parameters?.useSupabaseStorage) {
-        logger.info("Supabase storage search is not yet implemented");
-        // This would require a separate indexing mechanism as Supabase storage
+      // If we're using file storage, we could potentially query that
+      if (kb.parameters?.useFileStorage) {
+        logger.info("File storage search is not yet implemented");
+        // This would require a separate indexing mechanism as the file storage
         // doesn't provide content search capabilities directly
       }
 

@@ -3,7 +3,16 @@ import realtimeService, {
   SubscriptionCallback,
   RealtimeSubscription,
 } from "@/services/realtimeService";
-import { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
+
+// Define our own type instead of using Supabase's
+type RealtimeChangesPayload<T> = {
+  eventType: "INSERT" | "UPDATE" | "DELETE";
+  new: T;
+  old: T | null;
+  schema: string;
+  table: string;
+  commit_timestamp: string;
+};
 
 type TableName =
   | "chat_messages"
@@ -24,8 +33,9 @@ export function useRealtime<T = any>(
   enabled = true,
 ) {
   const [data, setData] = useState<T | null>(null);
-  const [payload, setPayload] =
-    useState<RealtimePostgresChangesPayload<T> | null>(null);
+  const [payload, setPayload] = useState<RealtimeChangesPayload<T> | null>(
+    null,
+  );
   const [error, setError] = useState<Error | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
@@ -36,9 +46,9 @@ export function useRealtime<T = any>(
       setIsLoading(true);
 
       try {
-        const callback: SubscriptionCallback<
-          RealtimePostgresChangesPayload<T>
-        > = (payload) => {
+        const callback: SubscriptionCallback<RealtimeChangesPayload<T>> = (
+          payload,
+        ) => {
           setPayload(payload);
 
           if (
@@ -90,9 +100,9 @@ export function useChatMessages(sessionId: string, enabled = true) {
       setIsLoading(true);
 
       try {
-        const callback: SubscriptionCallback<
-          RealtimePostgresChangesPayload<any>
-        > = (payload) => {
+        const callback: SubscriptionCallback<RealtimeChangesPayload<any>> = (
+          payload,
+        ) => {
           if (payload.eventType === "INSERT") {
             setMessages((prev) => [...prev, payload.new]);
           }
@@ -134,9 +144,9 @@ export function useChatSession(sessionId: string, enabled = true) {
       setIsLoading(true);
 
       try {
-        const callback: SubscriptionCallback<
-          RealtimePostgresChangesPayload<any>
-        > = (payload) => {
+        const callback: SubscriptionCallback<RealtimeChangesPayload<any>> = (
+          payload,
+        ) => {
           if (payload.eventType === "UPDATE") {
             setSession(payload.new);
           }
@@ -178,9 +188,9 @@ export function useWidgetConfigs(userId: string, enabled = true) {
       setIsLoading(true);
 
       try {
-        const callback: SubscriptionCallback<
-          RealtimePostgresChangesPayload<any>
-        > = (payload) => {
+        const callback: SubscriptionCallback<RealtimeChangesPayload<any>> = (
+          payload,
+        ) => {
           if (payload.eventType === "INSERT") {
             setConfigs((prev) => [...prev, payload.new]);
           } else if (payload.eventType === "UPDATE") {

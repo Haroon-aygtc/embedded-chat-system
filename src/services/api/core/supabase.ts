@@ -1,57 +1,34 @@
 /**
- * DEPRECATED: This file is kept for reference during migration
- * All code should now use the MySQL client instead
+ * This file has been removed as part of the migration from Supabase to MySQL.
+ * All code should now use the MySQL client instead.
  */
 
 import logger from "@/utils/logger";
 
-// Placeholder for compatibility during migration
-export const getSupabaseClient = () => {
-  logger.warn(
-    "getSupabaseClient is deprecated. Use getMySQLClientForAPI instead.",
-  );
-  return null;
-};
-
-// Export a warning function for any code still trying to use Supabase
-export const supabaseDeprecationWarning = () => {
-  logger.warn(
+// Throw error for any code still trying to use Supabase
+export const supabaseError = () => {
+  const error = new Error(
     "Supabase is no longer used in this application. Please update your code to use MySQL.",
   );
+  logger.error(error);
+  throw error;
 };
 
-export const getCurrentSession = async () => {
-  logger.warn(
-    "getCurrentSession is deprecated. Use MySQL authentication instead.",
-  );
-  return null;
-};
+// All methods now throw errors to prevent accidental usage
+export const getSupabaseClient = supabaseError;
+export const supabaseDeprecationWarning = supabaseError;
+export const getCurrentSession = supabaseError;
+export const getCurrentUser = supabaseError;
 
-export const getCurrentUser = async () => {
-  logger.warn(
-    "getCurrentUser is deprecated. Use MySQL authentication instead.",
-  );
-  return null;
-};
-
-// Export a mock supabase object for compatibility
-export const supabase = {
-  auth: {
-    getSession: async () => ({ data: { session: null }, error: null }),
-    getUser: async () => ({ data: { user: null }, error: null }),
+// Export a proxy that throws errors when used
+export const supabase = new Proxy(
+  {},
+  {
+    get: () => supabaseError(),
+    apply: () => supabaseError(),
   },
-  from: () => ({
-    select: () => ({ data: null, error: null }),
-    insert: () => ({ data: null, error: null }),
-    update: () => ({ data: null, error: null }),
-    delete: () => ({ data: null, error: null }),
-  }),
-};
+);
 
 export default {
-  getSupabaseClient,
-  supabaseDeprecationWarning,
-  getCurrentSession,
-  getCurrentUser,
-  supabase,
+  supabaseError,
 };

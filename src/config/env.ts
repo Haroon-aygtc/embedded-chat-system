@@ -31,10 +31,8 @@ export const env = {
   MYSQL_PASSWORD: getEnv("MYSQL_PASSWORD"),
   MYSQL_DATABASE: getEnv("MYSQL_DATABASE"),
 
-  // Legacy Supabase configuration (for backward compatibility)
-  SUPABASE_URL: getEnv("SUPABASE_URL"),
-  SUPABASE_ANON_KEY: getEnv("SUPABASE_ANON_KEY"),
-  SUPABASE_SERVICE_KEY: getEnv("SUPABASE_SERVICE_KEY"),
+  // Database configuration
+  // MySQL configuration is now used instead of Supabase
 
   // API keys
   GEMINI_API_KEY: getEnv("GEMINI_API_KEY"),
@@ -59,8 +57,7 @@ export const env = {
     return {
       NODE_ENV: env.NODE_ENV,
       MODE: env.MODE,
-      SUPABASE_URL: env.SUPABASE_URL,
-      SUPABASE_ANON_KEY: env.SUPABASE_ANON_KEY,
+      // Database configuration is now handled through MySQL
       PORT: env.PORT,
       API_PORT: env.API_PORT,
       WS_PORT: env.WS_PORT,

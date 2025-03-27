@@ -16,7 +16,6 @@ import compression from "compression";
 import cors from "cors";
 import bodyParser from "body-parser";
 import dotenv from "dotenv";
-import { createClient } from "@supabase/supabase-js";
 import { spawn } from "child_process";
 
 // Get directory path for ES modules
@@ -34,7 +33,7 @@ const isProd = NODE_ENV === "production";
 // Configuration with fallbacks
 const FRONTEND_PORT = process.env.PORT || 5173;
 const WS_PORT = process.env.WS_PORT || 8080;
-const API_PORT = process.env.API_PORT || 3001;
+const API_PORT = parseInt(process.env.API_PORT || 3001);
 const HOST = process.env.HOST || "0.0.0.0";
 
 // Logging utility
@@ -53,12 +52,6 @@ const servers = {
 
 // Flag to prevent restarting servers during shutdown
 let shuttingDown = false;
-
-// Initialize Supabase client (if credentials are available)
-const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
-const supabase =
-  supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
 // Check if the dist directory exists for production mode
 if (isProd && !fs.existsSync(path.join(rootDir, "dist"))) {
@@ -122,7 +115,6 @@ function configureApiRoutes(app) {
     res.status(200).json({
       status: "ok",
       timestamp: new Date().toISOString(),
-      supabaseConnected: !!supabase,
       environment: NODE_ENV,
     });
   });
@@ -130,12 +122,6 @@ function configureApiRoutes(app) {
   // Auth API
   app.post("/api/auth/register", async (req, res) => {
     try {
-      if (!supabase) {
-        return res
-          .status(503)
-          .json({ error: "Database connection not available" });
-      }
-
       const { email, password, name } = req.body;
 
       if (!email || !password) {
@@ -144,20 +130,17 @@ function configureApiRoutes(app) {
           .json({ error: "Email and password are required" });
       }
 
-      const { data, error } = await supabase.auth.signUp({
+      // TODO: Replace with your database implementation
+      // Mock successful registration
+      const mockUser = {
+        id: `user_${Math.random().toString(36).substring(2, 9)}`,
         email,
-        password,
-        options: {
-          data: {
-            name: name || email.split("@")[0],
-            role: "user",
-          },
-        },
-      });
+        name: name || email.split("@")[0],
+        role: "user",
+        created_at: new Date().toISOString(),
+      };
 
-      if (error) throw error;
-
-      res.status(201).json({ success: true, user: data.user });
+      res.status(201).json({ success: true, user: mockUser });
     } catch (error) {
       logger.error("Auth", `Error registering user: ${error.message}`);
       res.status(500).json({ error: error.message });
@@ -166,12 +149,6 @@ function configureApiRoutes(app) {
 
   app.post("/api/auth/login", async (req, res) => {
     try {
-      if (!supabase) {
-        return res
-          .status(503)
-          .json({ error: "Database connection not available" });
-      }
-
       const { email, password } = req.body;
 
       if (!email || !password) {
@@ -180,17 +157,25 @@ function configureApiRoutes(app) {
           .json({ error: "Email and password are required" });
       }
 
-      const { data, error } = await supabase.auth.signInWithPassword({
+      // TODO: Replace with your database implementation
+      // Mock successful login
+      const mockUser = {
+        id: `user_${Math.random().toString(36).substring(2, 9)}`,
         email,
-        password,
-      });
+        name: email.split("@")[0],
+        role: "user",
+        created_at: new Date().toISOString(),
+      };
 
-      if (error) throw error;
+      const mockSession = {
+        access_token: `token_${Math.random().toString(36).substring(2, 15)}`,
+        expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+      };
 
       res.status(200).json({
         success: true,
-        user: data.user,
-        session: data.session,
+        user: mockUser,
+        session: mockSession,
       });
     } catch (error) {
       logger.error("Auth", `Error logging in user: ${error.message}`);
@@ -201,20 +186,28 @@ function configureApiRoutes(app) {
   // Context Rules API
   app.get("/api/context-rules", async (req, res) => {
     try {
-      if (!supabase) {
-        return res
-          .status(503)
-          .json({ error: "Database connection not available" });
-      }
+      // TODO: Replace with your database implementation
+      // Mock context rules data
+      const mockContextRules = [
+        {
+          id: 1,
+          name: "General Knowledge",
+          description: "Allows responses about general topics",
+          priority: 100,
+          active: true,
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: 2,
+          name: "Business Domain",
+          description: "Restricts responses to business-related topics",
+          priority: 200,
+          active: true,
+          created_at: new Date().toISOString(),
+        },
+      ];
 
-      const { data, error } = await supabase
-        .from("context_rules")
-        .select("*")
-        .order("priority", { ascending: false });
-
-      if (error) throw error;
-
-      res.status(200).json(data);
+      res.status(200).json(mockContextRules);
     } catch (error) {
       logger.error("API", `Error fetching context rules: ${error.message}`);
       res.status(500).json({ error: error.message });
@@ -375,11 +368,15 @@ function startViteDevServer() {
   if (!isProd) {
     logger.info("Vite", `Starting dev server on port ${FRONTEND_PORT}...`);
 
+    // Use cross-platform path to npm executable
+    const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+
     const viteServer = spawn(
-      "npm",
+      npmCmd,
       ["run", "dev", "--", "--port", FRONTEND_PORT, "--host", HOST],
       {
         stdio: "pipe",
+        env: { ...process.env, VITE_TEMPO: "true" },
       },
     );
 
@@ -419,15 +416,31 @@ function startUnifiedServer() {
   // Configure WebSocket server
   const wss = configureWebSocketServer(server);
 
-  // Start the server
+  // Start the server with error handling for port conflicts
+  server.on("error", (error) => {
+    if (error.code === "EADDRINUSE") {
+      logger.error(
+        "Server",
+        `Port ${API_PORT} is already in use. Try a different port or stop the process using this port.`,
+      );
+      // Try another port
+      const newPort = API_PORT + 1;
+      logger.info("Server", `Attempting to use port ${newPort} instead...`);
+      server.listen(newPort, HOST);
+    } else {
+      logger.error("Server", `Server error: ${error.message}`);
+      process.exit(1);
+    }
+  });
+
   server.listen(API_PORT, HOST, () => {
     logger.success(
       "Server",
-      `Unified server running on http://${HOST}:${API_PORT}`,
+      `Unified server running on http://${HOST}:${server.address().port}`,
     );
     logger.success(
       "WebSocket",
-      `WebSocket server available at ws://${HOST}:${API_PORT}`,
+      `WebSocket server available at ws://${HOST}:${server.address().port}`,
     );
   });
 

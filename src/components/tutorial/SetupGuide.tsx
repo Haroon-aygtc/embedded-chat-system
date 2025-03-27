@@ -170,13 +170,15 @@ const SetupGuide = () => {
                     following variables:
                   </p>
                   <div className="bg-muted rounded-md p-3 font-mono text-sm overflow-x-auto">
-                    VITE_SUPABASE_URL=https://your-project-id.supabase.co
+                    MYSQL_HOST=localhost
                     <br />
-                    VITE_SUPABASE_ANON_KEY=your-anon-key
+                    MYSQL_PORT=3306
                     <br />
-                    SUPABASE_SERVICE_KEY=your-service-key
+                    MYSQL_USER=root
                     <br />
-                    SUPABASE_PROJECT_ID=your-project-id
+                    MYSQL_PASSWORD=password
+                    <br />
+                    MYSQL_DATABASE=chat_widget_db
                   </div>
                 </div>
 
@@ -221,24 +223,16 @@ const SetupGuide = () => {
                 <div className="space-y-2">
                   <h3 className="font-medium flex items-center">
                     <Database className="h-5 w-5 mr-2 text-primary" />
-                    Create a Supabase Project
+                    Set Up MySQL Database
                   </h3>
                   <ol className="list-decimal list-inside space-y-2 text-sm">
                     <li>
-                      Go to{" "}
-                      <a
-                        href="https://supabase.com"
-                        className="text-primary hover:underline"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        supabase.com
-                      </a>{" "}
-                      and sign in to your account
+                      Install MySQL on your local machine or use a cloud
+                      provider
                     </li>
-                    <li>Click "New Project" and follow the setup wizard</li>
+                    <li>Create a new database named 'chat_widget_db'</li>
                     <li>
-                      Once created, go to Project Settings to find your API keys
+                      Configure your connection details in the .env.local file
                     </li>
                   </ol>
                 </div>
@@ -249,33 +243,31 @@ const SetupGuide = () => {
                     Run Database Migrations
                   </h3>
                   <p className="text-sm text-muted-foreground">
-                    The project includes migration files in the
-                    supabase/migrations directory. You can apply them using the
-                    Supabase CLI or manually through the SQL editor in the
-                    Supabase dashboard.
+                    The project includes migration files in the migrations
+                    directory. You can apply them using Sequelize CLI.
                   </p>
                   <div className="bg-muted rounded-md p-3 font-mono text-sm overflow-x-auto">
-                    # Using Supabase CLI (if installed)
+                    # Using Sequelize CLI
                     <br />
-                    npx supabase link --project-ref your-project-id
-                    <br />
-                    npx supabase db push
+                    npx sequelize-cli db:migrate
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <h3 className="font-medium">Manual SQL Execution</h3>
                   <p className="text-sm text-muted-foreground">
-                    Alternatively, you can execute the SQL files manually in the
-                    Supabase SQL Editor:
+                    Alternatively, you can execute the SQL files manually in
+                    your MySQL client:
                   </p>
                   <ol className="list-decimal list-inside space-y-2 text-sm">
-                    <li>Go to the SQL Editor in your Supabase dashboard</li>
                     <li>
-                      Open each migration file from the supabase/migrations
-                      directory
+                      Connect to your MySQL database using a client like MySQL
+                      Workbench
                     </li>
-                    <li>Copy and paste the SQL into the editor and run it</li>
+                    <li>
+                      Open each migration file from the migrations directory
+                    </li>
+                    <li>Execute the SQL statements in your client</li>
                     <li>Execute the files in numerical order (by filename)</li>
                   </ol>
                 </div>
@@ -284,9 +276,9 @@ const SetupGuide = () => {
                   <AlertCircle className="h-4 w-4" />
                   <AlertTitle>Important</AlertTitle>
                   <AlertDescription>
-                    Make sure to enable the realtime functionality in your
-                    Supabase project settings for the WebSocket features to work
-                    properly.
+                    Make sure your MySQL server is properly configured and
+                    accessible from your application for all database features
+                    to work properly.
                   </AlertDescription>
                 </Alert>
               </div>
@@ -307,19 +299,19 @@ const SetupGuide = () => {
                 <div className="space-y-2">
                   <h3 className="font-medium">Authentication Setup</h3>
                   <p className="text-sm text-muted-foreground">
-                    Configure authentication providers in your Supabase
-                    dashboard:
+                    Configure authentication in your application:
                   </p>
                   <ol className="list-decimal list-inside space-y-2 text-sm">
                     <li>
-                      Go to Authentication → Providers in your Supabase
-                      dashboard
+                      The application uses JWT-based authentication with MySQL
                     </li>
                     <li>
-                      Enable Email provider (and any other providers you want to
-                      use)
+                      Make sure the authentication routes are properly
+                      configured
                     </li>
-                    <li>Configure the Site URL and Redirect URLs</li>
+                    <li>
+                      Set up proper session management in your application
+                    </li>
                   </ol>
                 </div>
 

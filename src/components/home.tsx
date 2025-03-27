@@ -59,8 +59,8 @@ const Home = () => {
                 : true,
           });
         }
-      } catch (mysqlError) {
-        console.error("Error fetching widget config from MySQL:", mysqlError);
+      } catch (dbError) {
+        console.error("Error fetching widget config from database:", dbError);
         setError("Failed to load widget configuration from database");
       }
     } catch (error) {
