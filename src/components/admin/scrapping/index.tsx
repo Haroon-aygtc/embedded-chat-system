@@ -1,3 +1,3 @@
-import ScrapingModule from "../scraping/ScrapingModule";
+import ScrappingModule from "./ScrappingModule";
 
-export default ScrapingModule;
+export default ScrappingModule;
