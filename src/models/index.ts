@@ -8,6 +8,7 @@ import ChatSession, { initChatSession } from "./ChatSession";
 import ChatMessage, { initChatMessage } from "./ChatMessage";
 import WidgetConfig, { initWidgetConfig } from "./WidgetConfig";
 import AIResponseCache, { initAIResponseCache } from "./AIResponseCache";
+import AIInteractionLog, { initAIInteractionLog } from "./AIInteractionLog";
 
 // Initialize all models
 export const initializeModels = async () => {
@@ -20,6 +21,7 @@ export const initializeModels = async () => {
       initChatMessage(),
       initWidgetConfig(),
       initAIResponseCache(),
+      initAIInteractionLog(),
     ]);
 
     // Define associations
@@ -166,6 +168,7 @@ export {
   ChatMessage,
   WidgetConfig,
   AIResponseCache,
+  AIInteractionLog,
 };
 
 // Export a default object with all models
@@ -176,6 +179,7 @@ const models = {
   ChatMessage,
   WidgetConfig,
   AIResponseCache,
+  AIInteractionLog,
   initializeModels,
 };
 

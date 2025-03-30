@@ -4,13 +4,9 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
-import { createClient } from "@supabase/supabase-js";
+import axios from "axios";
+import { getMySQLClient } from "./mysqlClient";
 import logger from "@/utils/logger";
-
-// Initialize Supabase client
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export interface PromptTemplate {
   id: string;
@@ -59,28 +55,24 @@ const promptTemplateService = {
    */
   getAllTemplates: async (): Promise<PromptTemplate[]> => {
     try {
-      const { data, error } = await supabase
-        .from("prompt_templates")
-        .select("*")
-        .order("name");
-
-      if (error) throw error;
-
-      return (
-        data?.map((template) => ({
-          id: template.id,
-          name: template.name,
-          description: template.description,
-          template: template.template,
-          category: template.category,
-          variables: template.variables || [],
-          createdAt: template.created_at,
-          updatedAt: template.updated_at,
-          isActive: template.is_active,
-          userId: template.user_id,
-          metadata: template.metadata,
-        })) || []
+      const sequelize = await getMySQLClient();
+      const [results] = await sequelize.query(
+        `SELECT * FROM prompt_templates ORDER BY name`,
       );
+
+      return (results as any[]).map((template) => ({
+        id: template.id,
+        name: template.name,
+        description: template.description,
+        template: template.template,
+        category: template.category,
+        variables: template.variables || [],
+        createdAt: template.created_at,
+        updatedAt: template.updated_at,
+        isActive: template.is_active,
+        userId: template.user_id,
+        metadata: template.metadata,
+      }));
     } catch (error) {
       logger.error("Error fetching prompt templates:", error);
       return [];
@@ -94,29 +86,27 @@ const promptTemplateService = {
     category: string,
   ): Promise<PromptTemplate[]> => {
     try {
-      const { data, error } = await supabase
-        .from("prompt_templates")
-        .select("*")
-        .eq("category", category)
-        .order("name");
-
-      if (error) throw error;
-
-      return (
-        data?.map((template) => ({
-          id: template.id,
-          name: template.name,
-          description: template.description,
-          template: template.template,
-          category: template.category,
-          variables: template.variables || [],
-          createdAt: template.created_at,
-          updatedAt: template.updated_at,
-          isActive: template.is_active,
-          userId: template.user_id,
-          metadata: template.metadata,
-        })) || []
+      const sequelize = await getMySQLClient();
+      const [results] = await sequelize.query(
+        `SELECT * FROM prompt_templates WHERE category = ? ORDER BY name`,
+        {
+          replacements: [category],
+        },
       );
+
+      return (results as any[]).map((template) => ({
+        id: template.id,
+        name: template.name,
+        description: template.description,
+        template: template.template,
+        category: template.category,
+        variables: template.variables || [],
+        createdAt: template.created_at,
+        updatedAt: template.updated_at,
+        isActive: template.is_active,
+        userId: template.user_id,
+        metadata: template.metadata,
+      }));
     } catch (error) {
       logger.error(
         `Error fetching prompt templates for category ${category}:`,
@@ -131,14 +121,16 @@ const promptTemplateService = {
    */
   getTemplate: async (id: string): Promise<PromptTemplate | null> => {
     try {
-      const { data, error } = await supabase
-        .from("prompt_templates")
-        .select("*")
-        .eq("id", id)
-        .single();
+      const sequelize = await getMySQLClient();
+      const [results] = await sequelize.query(
+        `SELECT * FROM prompt_templates WHERE id = ?`,
+        {
+          replacements: [id],
+        },
+      );
 
-      if (error) throw error;
-      if (!data) return null;
+      if (!results || (results as any[]).length === 0) return null;
+      const data = (results as any[])[0];
 
       return {
         id: data.id,
@@ -166,6 +158,7 @@ const promptTemplateService = {
     params: PromptTemplateCreateParams,
   ): Promise<PromptTemplate | null> => {
     try {
+      const sequelize = await getMySQLClient();
       const newTemplate = {
         id: uuidv4(),
         name: params.name,
@@ -180,27 +173,40 @@ const promptTemplateService = {
         updated_at: new Date().toISOString(),
       };
 
-      const { data, error } = await supabase
-        .from("prompt_templates")
-        .insert([newTemplate])
-        .select()
-        .single();
-
-      if (error) throw error;
-      if (!data) return null;
+      await sequelize.query(
+        `INSERT INTO prompt_templates (
+          id, name, description, template, category, variables, 
+          is_active, user_id, metadata, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        {
+          replacements: [
+            newTemplate.id,
+            newTemplate.name,
+            newTemplate.description,
+            newTemplate.template,
+            newTemplate.category,
+            JSON.stringify(newTemplate.variables),
+            newTemplate.is_active,
+            newTemplate.user_id,
+            JSON.stringify(newTemplate.metadata),
+            newTemplate.created_at,
+            newTemplate.updated_at,
+          ],
+        },
+      );
 
       return {
-        id: data.id,
-        name: data.name,
-        description: data.description,
-        template: data.template,
-        category: data.category,
-        variables: data.variables || [],
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-        isActive: data.is_active,
-        userId: data.user_id,
-        metadata: data.metadata,
+        id: newTemplate.id,
+        name: newTemplate.name,
+        description: newTemplate.description,
+        template: newTemplate.template,
+        category: newTemplate.category,
+        variables: newTemplate.variables,
+        createdAt: newTemplate.created_at,
+        updatedAt: newTemplate.updated_at,
+        isActive: newTemplate.is_active,
+        userId: newTemplate.user_id,
+        metadata: newTemplate.metadata,
       };
     } catch (error) {
       logger.error("Error creating prompt template:", error);
@@ -216,43 +222,55 @@ const promptTemplateService = {
     params: PromptTemplateUpdateParams,
   ): Promise<PromptTemplate | null> => {
     try {
-      const updateData: Record<string, any> = {
-        updated_at: new Date().toISOString(),
-      };
+      const sequelize = await getMySQLClient();
+      const updateFields = [];
+      const replacements = [];
 
-      if (params.name !== undefined) updateData.name = params.name;
-      if (params.description !== undefined)
-        updateData.description = params.description;
-      if (params.template !== undefined) updateData.template = params.template;
-      if (params.category !== undefined) updateData.category = params.category;
-      if (params.variables !== undefined)
-        updateData.variables = params.variables;
-      if (params.isActive !== undefined) updateData.is_active = params.isActive;
-      if (params.metadata !== undefined) updateData.metadata = params.metadata;
+      // Build dynamic update query
+      if (params.name !== undefined) {
+        updateFields.push("name = ?");
+        replacements.push(params.name);
+      }
+      if (params.description !== undefined) {
+        updateFields.push("description = ?");
+        replacements.push(params.description);
+      }
+      if (params.template !== undefined) {
+        updateFields.push("template = ?");
+        replacements.push(params.template);
+      }
+      if (params.category !== undefined) {
+        updateFields.push("category = ?");
+        replacements.push(params.category);
+      }
+      if (params.variables !== undefined) {
+        updateFields.push("variables = ?");
+        replacements.push(JSON.stringify(params.variables));
+      }
+      if (params.isActive !== undefined) {
+        updateFields.push("is_active = ?");
+        replacements.push(params.isActive);
+      }
+      if (params.metadata !== undefined) {
+        updateFields.push("metadata = ?");
+        replacements.push(JSON.stringify(params.metadata));
+      }
 
-      const { data, error } = await supabase
-        .from("prompt_templates")
-        .update(updateData)
-        .eq("id", id)
-        .select()
-        .single();
+      // Always update the updated_at timestamp
+      updateFields.push("updated_at = ?");
+      replacements.push(new Date().toISOString());
 
-      if (error) throw error;
-      if (!data) return null;
+      // Add the ID to the replacements array for the WHERE clause
+      replacements.push(id);
 
-      return {
-        id: data.id,
-        name: data.name,
-        description: data.description,
-        template: data.template,
-        category: data.category,
-        variables: data.variables || [],
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-        isActive: data.is_active,
-        userId: data.user_id,
-        metadata: data.metadata,
-      };
+      // Execute the update query
+      await sequelize.query(
+        `UPDATE prompt_templates SET ${updateFields.join(", ")} WHERE id = ?`,
+        { replacements },
+      );
+
+      // Fetch the updated template
+      return await promptTemplateService.getTemplate(id);
     } catch (error) {
       logger.error(`Error updating prompt template ${id}:`, error);
       return null;
@@ -264,12 +282,10 @@ const promptTemplateService = {
    */
   deleteTemplate: async (id: string): Promise<boolean> => {
     try {
-      const { error } = await supabase
-        .from("prompt_templates")
-        .delete()
-        .eq("id", id);
-
-      if (error) throw error;
+      const sequelize = await getMySQLClient();
+      await sequelize.query(`DELETE FROM prompt_templates WHERE id = ?`, {
+        replacements: [id],
+      });
       return true;
     } catch (error) {
       logger.error(`Error deleting prompt template ${id}:`, error);
@@ -330,15 +346,13 @@ const promptTemplateService = {
    */
   logTemplateUsage: async (templateId: string): Promise<void> => {
     try {
-      const { error } = await supabase.from("prompt_template_usage").insert([
+      const sequelize = await getMySQLClient();
+      await sequelize.query(
+        `INSERT INTO prompt_template_usage (id, template_id, used_at) VALUES (?, ?, ?)`,
         {
-          id: uuidv4(),
-          template_id: templateId,
-          used_at: new Date().toISOString(),
+          replacements: [uuidv4(), templateId, new Date().toISOString()],
         },
-      ]);
-
-      if (error) throw error;
+      );
     } catch (error) {
       logger.error(`Error logging template usage for ${templateId}:`, error);
     }
@@ -352,25 +366,33 @@ const promptTemplateService = {
     endDate?: string;
   }): Promise<any> => {
     try {
-      let query = supabase
-        .from("prompt_template_usage")
-        .select("template_id, used_at");
+      const sequelize = await getMySQLClient();
+      let query = `SELECT template_id, used_at FROM prompt_template_usage`;
+      const replacements = [];
 
-      if (params.startDate) {
-        query = query.gte("used_at", params.startDate);
+      if (params.startDate || params.endDate) {
+        query += " WHERE ";
+
+        if (params.startDate) {
+          query += "used_at >= ?";
+          replacements.push(params.startDate);
+
+          if (params.endDate) {
+            query += " AND ";
+          }
+        }
+
+        if (params.endDate) {
+          query += "used_at <= ?";
+          replacements.push(params.endDate);
+        }
       }
 
-      if (params.endDate) {
-        query = query.lte("used_at", params.endDate);
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
+      const [data] = await sequelize.query(query, { replacements });
 
       // Count usage by template ID
       const usageByTemplate: Record<string, number> = {};
-      data?.forEach((usage) => {
+      (data as any[]).forEach((usage) => {
         usageByTemplate[usage.template_id] =
           (usageByTemplate[usage.template_id] || 0) + 1;
       });
@@ -392,7 +414,7 @@ const promptTemplateService = {
         }));
 
       return {
-        totalUsage: data?.length || 0,
+        totalUsage: (data as any[]).length || 0,
         usageByTemplate: usageWithDetails,
         timeRange: {
           startDate: params.startDate,
@@ -417,16 +439,14 @@ const promptTemplateService = {
    */
   getAllCategories: async (): Promise<string[]> => {
     try {
-      const { data, error } = await supabase
-        .from("prompt_templates")
-        .select("category")
-        .order("category");
-
-      if (error) throw error;
+      const sequelize = await getMySQLClient();
+      const [results] = await sequelize.query(
+        `SELECT DISTINCT category FROM prompt_templates ORDER BY category`,
+      );
 
       // Extract unique categories
       const categories = new Set<string>();
-      data?.forEach((template) => {
+      (results as any[]).forEach((template) => {
         if (template.category) {
           categories.add(template.category);
         }

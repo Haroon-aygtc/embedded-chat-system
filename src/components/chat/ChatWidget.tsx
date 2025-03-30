@@ -8,6 +8,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { chatService } from "@/services/chatService";
 import { useAuth } from "@/context/AuthContext";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import axios from "axios";
 
 interface ChatWidgetProps {
   config?: any;
@@ -70,9 +71,8 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
   const loadWidgetConfig = async () => {
     try {
       // Load widget configuration from the server
-      const response = await fetch(`/api/widget/${widgetId}/config`);
-      if (response.ok) {
-        const data = await response.json();
+      const response = await axios.get(`/api/widget/${widgetId}/config`);
+      if (response.status === 200) {
         // Update the widget configuration
         // This would be handled by the parent component in a real implementation
       }
@@ -137,7 +137,8 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
       }
 
       // Create or resume a chat session
-      const session = await chatService.createSession();
+      const userId = user?.id || "anonymous";
+      const session = await chatService.createSession(userId);
       setSessionId(session.id);
 
       // Load previous messages if any
@@ -146,12 +147,14 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
         setMessages(history);
       } else {
         // Send initial message
-        sendMessage({
-          type: "chat_message",
-          sessionId: session.id,
-          content: widgetConfig.initialMessage,
-          role: "assistant",
-        });
+        if (connected) {
+          sendMessage({
+            type: "chat_message",
+            sessionId: session.id,
+            content: widgetConfig.initialMessage,
+            role: "assistant",
+          });
+        }
 
         setMessages([
           {
@@ -241,7 +244,12 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
         });
       } else {
         // Fallback to REST API if WebSocket is not connected
-        const response = await chatService.sendMessage(sessionId!, content);
+        const userId = user?.id || "anonymous";
+        const response = await chatService.sendMessage(
+          sessionId!,
+          content,
+          userId,
+        );
         setIsTyping(false);
         setMessages((prev) => [
           ...(prev || []),

@@ -9,12 +9,7 @@ import knowledgeBaseService, {
   KnowledgeBaseResult,
 } from "./knowledgeBaseService";
 import promptTemplateService from "./promptTemplateService";
-import { createClient } from "@supabase/supabase-js";
-
-// Initialize Supabase client
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import responseFormatService from "./responseFormatService";
 
 interface AIInteractionLogsParams {
   page: number;
@@ -36,6 +31,7 @@ interface GenerateResponseOptions {
   preferredModel?: string;
   maxTokens?: number;
   temperature?: number;
+  responseFormatId?: string;
   additionalParams?: Record<string, any>;
 }
 
@@ -56,6 +52,7 @@ interface ContextRule {
   blocked_domains?: string[];
   allowed_topics?: string[];
   blocked_topics?: string[];
+  response_format_id?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -74,6 +71,29 @@ const aiService = {
       // Try to generate via API first
       try {
         const response = await axios.post("/api/ai/generate", options);
+        let formattedContent = response.data.content;
+
+        // Apply response format if specified
+        if (options.responseFormatId) {
+          try {
+            formattedContent = await responseFormatService.applyFormat({
+              formatId: options.responseFormatId,
+              variables: {
+                content: response.data.content,
+                query: options.query,
+                userId: options.userId,
+                ...options.additionalParams,
+              },
+            });
+
+            // Update the response content with formatted content
+            response.data.content = formattedContent;
+            response.data.formatted = true;
+          } catch (formatError) {
+            logger.error("Error applying response format:", formatError);
+            // Continue with unformatted content if formatting fails
+          }
+        }
 
         // Log the interaction
         await aiService.logInteraction({
@@ -84,7 +104,11 @@ const aiService = {
           contextRuleId: options.contextRuleId,
           knowledgeBaseResults: response.data.knowledgeBaseResults || 0,
           knowledgeBaseIds: response.data.knowledgeBaseIds || [],
-          metadata: response.data.metadata,
+          metadata: {
+            ...response.data.metadata,
+            formatted: response.data.formatted || false,
+            responseFormatId: options.responseFormatId,
+          },
         });
 
         return response.data;
@@ -185,6 +209,7 @@ const aiService = {
       let systemPrompt = options.systemPrompt || "";
       let knowledgeBaseIds = options.knowledgeBaseIds || [];
       let knowledgeBaseResults: KnowledgeBaseResult[] = [];
+      let responseFormatId = options.responseFormatId;
 
       // If a context rule is specified, get its configuration
       if (options.contextRuleId) {
@@ -205,6 +230,11 @@ const aiService = {
             knowledgeBaseIds = Array.isArray(contextRule.knowledge_base_ids)
               ? contextRule.knowledge_base_ids
               : contextRule.knowledge_base_ids.split(",");
+          }
+
+          // Use the context rule's response format ID if available
+          if (contextRule.response_format_id) {
+            responseFormatId = contextRule.response_format_id;
           }
 
           // Apply prompt template if specified in the context rule
@@ -253,6 +283,7 @@ const aiService = {
         systemPrompt,
         knowledgeBaseIds,
         knowledgeBaseResults,
+        responseFormatId,
       };
     } catch (error) {
       logger.error("Error enhancing request with context:", error);
@@ -269,14 +300,16 @@ const aiService = {
    */
   getContextRule: async (id: string): Promise<ContextRule | null> => {
     try {
-      const { data, error } = await supabase
-        .from("context_rules")
-        .select("*")
-        .eq("id", id)
-        .single();
+      const sequelize = await getMySQLClient();
+      const [results] = await sequelize.query(
+        `SELECT * FROM context_rules WHERE id = ?`,
+        {
+          replacements: [id],
+        },
+      );
 
-      if (error) throw error;
-      return data;
+      if (!results || (results as any[]).length === 0) return null;
+      return (results as any[])[0] as ContextRule;
     } catch (error) {
       logger.error(`Error fetching context rule ${id}:`, error);
       return null;
@@ -325,11 +358,12 @@ const aiService = {
               data.modelUsed,
               data.contextRuleId || null,
               data.knowledgeBaseResults || 0,
-              data.knowledgeBaseIds ? data.knowledgeBaseIds.join(",") : null,
+              data.knowledgeBaseIds
+                ? JSON.stringify(data.knowledgeBaseIds)
+                : null,
               data.metadata ? JSON.stringify(data.metadata) : null,
               new Date(),
             ],
-            type: sequelize.QueryTypes.INSERT,
           },
         );
 
@@ -422,26 +456,67 @@ const aiService = {
    */
   getInteractionLogs: async (params: AIInteractionLogsParams) => {
     try {
-      const { data, error } = await supabase
-        .from("ai_interaction_logs")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .range(
-          (params.page - 1) * params.pageSize,
-          params.page * params.pageSize - 1,
-        );
+      const sequelize = await getMySQLClient();
 
-      if (error) throw error;
+      // Build the query with conditions
+      let query = `SELECT * FROM ai_interaction_logs`;
+      const conditions = [];
+      const replacements = [];
+
+      if (params.query) {
+        conditions.push(`(query LIKE ? OR response LIKE ?)`);
+        const searchTerm = `%${params.query}%`;
+        replacements.push(searchTerm, searchTerm);
+      }
+
+      if (params.modelUsed) {
+        conditions.push(`model_used = ?`);
+        replacements.push(params.modelUsed);
+      }
+
+      if (params.contextRuleId) {
+        conditions.push(`context_rule_id = ?`);
+        replacements.push(params.contextRuleId);
+      }
+
+      if (params.startDate) {
+        conditions.push(`created_at >= ?`);
+        replacements.push(params.startDate);
+      }
+
+      if (params.endDate) {
+        conditions.push(`created_at <= ?`);
+        replacements.push(params.endDate);
+      }
+
+      if (conditions.length > 0) {
+        query += ` WHERE ${conditions.join(" AND ")}`;
+      }
+
+      // Add ordering
+      query += ` ORDER BY created_at DESC`;
+
+      // Add pagination
+      query += ` LIMIT ? OFFSET ?`;
+      replacements.push(params.pageSize, (params.page - 1) * params.pageSize);
+
+      // Execute the query
+      const [logs] = await sequelize.query(query, { replacements });
 
       // Get total count for pagination
-      const { count, error: countError } = await supabase
-        .from("ai_interaction_logs")
-        .select("*", { count: "exact", head: true });
+      let countQuery = `SELECT COUNT(*) as count FROM ai_interaction_logs`;
+      if (conditions.length > 0) {
+        countQuery += ` WHERE ${conditions.join(" AND ")}`;
+      }
 
-      if (countError) throw countError;
+      const [countResult] = await sequelize.query(countQuery, {
+        replacements: replacements.slice(0, replacements.length - 2), // Remove limit and offset
+      });
+
+      const count = (countResult as any[])[0].count;
 
       return {
-        logs: data || [],
+        logs: logs || [],
         total: count || 0,
         page: params.page,
         pageSize: params.pageSize,

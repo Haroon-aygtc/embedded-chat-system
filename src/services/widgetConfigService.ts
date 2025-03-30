@@ -1,5 +1,7 @@
 import logger from "@/utils/logger";
-import { WidgetConfig as DBWidgetConfig } from "@/models";
+import { getMySQLClient } from "./mysqlClient";
+import { v4 as uuidv4 } from "uuid";
+import { WidgetConfig as WidgetConfigType } from "@/models";
 
 export interface WidgetConfig {
   id?: string;
@@ -25,8 +27,6 @@ export const widgetConfigService = {
    */
   getDefaultWidgetConfig: async (): Promise<WidgetConfig> => {
     try {
-      // Import MySQL client dynamically to avoid browser issues
-      const { getMySQLClient } = await import("./mysqlClient");
       const sequelize = await getMySQLClient();
 
       const [result] = await sequelize.query(
@@ -78,7 +78,6 @@ export const widgetConfigService = {
     config: Omit<WidgetConfig, "id" | "createdAt" | "updatedAt">,
   ): Promise<WidgetConfig> => {
     try {
-      const { getMySQLClient } = await import("./mysqlClient");
       const sequelize = await getMySQLClient();
 
       // Convert from camelCase to snake_case for database
@@ -142,7 +141,6 @@ export const widgetConfigService = {
     config: Partial<WidgetConfig>,
   ): Promise<WidgetConfig> => {
     try {
-      const { getMySQLClient } = await import("./mysqlClient");
       const sequelize = await getMySQLClient();
 
       // Build update query dynamically based on provided fields
@@ -248,7 +246,6 @@ export const widgetConfigService = {
    */
   getAllWidgetConfigs: async (): Promise<WidgetConfig[]> => {
     try {
-      const { getMySQLClient } = await import("./mysqlClient");
       const sequelize = await getMySQLClient();
 
       const results = await sequelize.query(
@@ -283,7 +280,6 @@ export const widgetConfigService = {
    */
   deleteWidgetConfig: async (id: string): Promise<boolean> => {
     try {
-      const { getMySQLClient } = await import("./mysqlClient");
       const sequelize = await getMySQLClient();
 
       const [result] = await sequelize.query(

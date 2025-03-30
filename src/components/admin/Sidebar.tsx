@@ -144,6 +144,12 @@ const Sidebar = ({
       ],
     },
     {
+      id: "responseFormats",
+      label: "Response Formats",
+      icon: <FileJson size={20} />,
+      path: "/admin/response-formats",
+    },
+    {
       id: "scraping",
       label: "Web Scraping",
       icon: <Globe size={20} />,
@@ -218,6 +224,7 @@ const Sidebar = ({
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({
     contextRules: true,
     templates: false,
+    tutorials: false,
   });
 
   // Update active item when location changes
@@ -240,6 +247,16 @@ const Sidebar = ({
       ...prev,
       [menu]: !prev[menu],
     }));
+  };
+
+  const handleMenuItemClick = (item: any) => {
+    setActiveItem(item.id);
+    navigate(item.path);
+
+    // If the item has a submenu, toggle it
+    if (item.submenu) {
+      toggleMenu(item.id);
+    }
   };
 
   const handleLogout = () => {
@@ -313,7 +330,7 @@ const Sidebar = ({
                       activeItem === item.id && "bg-slate-800 text-white",
                       collapsed && "justify-center px-2",
                     )}
-                    onClick={() => !collapsed && toggleMenu(item.id)}
+                    onClick={() => handleMenuItemClick(item)}
                   >
                     <TooltipProvider delayDuration={300}>
                       <Tooltip>
@@ -374,10 +391,7 @@ const Sidebar = ({
                     activeItem === item.id && "bg-slate-800 text-white",
                     collapsed && "justify-center px-2",
                   )}
-                  onClick={() => {
-                    setActiveItem(item.id);
-                    navigate(item.path);
-                  }}
+                  onClick={() => handleMenuItemClick(item)}
                 >
                   <TooltipProvider delayDuration={300}>
                     <Tooltip>
