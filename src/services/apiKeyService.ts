@@ -159,11 +159,15 @@ const apiKeyService = {
   /**
    * Rotate an API key
    */
-  rotateApiKey: async (keyType: string): Promise<{ newApiKey: string } | null> => {
+  rotateApiKey: async (
+    keyType: string,
+  ): Promise<{ newApiKey: string } | null> => {
     try {
       // Try API first
       try {
-        const response = await axios.post(`/api/settings/api-keys/${keyType}/rotate`);
+        const response = await axios.post(
+          `/api/settings/api-keys/${keyType}/rotate`,
+        );
         return response.data;
       } catch (apiError) {
         logger.warn(
@@ -173,10 +177,10 @@ const apiKeyService = {
 
         // Generate a new key (in a real implementation, this would be more secure)
         const newKey = `${keyType}_${Math.random().toString(36).substring(2, 15)}`;
-        
+
         // Store the new key
         const success = await apiKeyService.storeApiKey(keyType, newKey);
-        
+
         if (success) {
           return { newApiKey: newKey };
         }
@@ -369,18 +373,34 @@ const apiKeyService = {
 
         // Calculate summary statistics
         const geminiStats = results.filter((r: any) => r.key_type === "gemini");
-        const huggingfaceStats = results.filter((r: any) => r.key_type === "huggingface");
+        const huggingfaceStats = results.filter(
+          (r: any) => r.key_type === "huggingface",
+        );
 
         const calculateSummary = (stats: any[]) => {
           if (stats.length === 0) return null;
-          
-          const totalCalls = stats.reduce((sum: number, item: any) => sum + parseInt(item.request_count), 0);
-          const totalErrors = stats.reduce((sum: number, item: any) => sum + parseInt(item.error_count), 0);
-          const avgResponseTime = stats.reduce((sum: number, item: any) => sum + parseFloat(item.avg_response_time), 0) / stats.length;
-          
+
+          const totalCalls = stats.reduce(
+            (sum: number, item: any) => sum + parseInt(item.request_count),
+            0,
+          );
+          const totalErrors = stats.reduce(
+            (sum: number, item: any) => sum + parseInt(item.error_count),
+            0,
+          );
+          const avgResponseTime =
+            stats.reduce(
+              (sum: number, item: any) =>
+                sum + parseFloat(item.avg_response_time),
+              0,
+            ) / stats.length;
+
           return {
             totalCalls,
-            successRate: totalCalls > 0 ? ((totalCalls - totalErrors) / totalCalls) * 100 : 100,
+            successRate:
+              totalCalls > 0
+                ? ((totalCalls - totalErrors) / totalCalls) * 100
+                : 100,
             averageResponseTime: avgResponseTime,
             costThisMonth: (totalCalls * 0.01).toFixed(2), // Example cost calculation
           };
@@ -392,16 +412,16 @@ const apiKeyService = {
           FROM api_key_usage_logs
           GROUP BY key_type
         `;
-        
+
         const lastUsedResults = await sequelize.query(lastUsedQuery, {
           type: sequelize.QueryTypes.SELECT,
         });
-        
+
         const lastUsed: Record<string, string | null> = {
           gemini: null,
           huggingface: null,
         };
-        
+
         lastUsedResults.forEach((result: any) => {
           lastUsed[result.key_type] = result.last_used;
         });
@@ -427,7 +447,7 @@ const apiKeyService = {
       }
     } catch (error) {
       logger.error(`Error getting API key usage statistics`, error);
-      
+
       // Return mock data
       return {
         usageStats: {
@@ -456,4 +476,21 @@ const apiKeyService = {
   /**
    * Get all API keys from the database
    */
-  getAllApiKeys: async
+  getAllApiKeys: async (): Promise<any> => {
+    try {
+      const sequelize = await getMySQLClient();
+      const [results] = await sequelize.query(
+        `SELECT * FROM api_keys ORDER BY created_at DESC`,
+        {
+          type: sequelize.QueryTypes.SELECT,
+        },
+      );
+      return results || [];
+    } catch (error) {
+      logger.error("Error getting all API keys", error);
+      return [];
+    }
+  },
+};
+
+export default apiKeyService;

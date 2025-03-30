@@ -15,6 +15,7 @@ import AdminLayout from "@/components/admin/layout/AdminLayout";
 // Lazy-loaded admin components
 const Dashboard = lazy(() => import("../pages/admin/dashboard"));
 const ApiKeysPage = lazy(() => import("../pages/admin/api-keys"));
+const ScrapingPage = lazy(() => import("../pages/admin/scraping"));
 const ModerationQueue = lazy(
   () => import("../components/admin/ModerationQueue"),
 );
@@ -166,6 +167,14 @@ const AppRoutes = () => {
             element={
               <Suspense fallback={<LoadingFallback />}>
                 <ApiKeysPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="scraping"
+            element={
+              <Suspense fallback={<LoadingFallback />}>
+                <ScrapingPage />
               </Suspense>
             }
           />

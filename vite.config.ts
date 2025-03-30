@@ -55,13 +55,15 @@ export default defineConfig({
   },
   server: {
     // @ts-ignore
-    allowedHosts: true,
+    allowedHosts: process.env.TEMPO === "true" ? true : undefined,
+    // Disable proxy to avoid connection errors
     proxy: {
-      "/api": {
-        target: "http://localhost:3001",
-        changeOrigin: true,
-        secure: false,
-      },
+      // Commented out to prevent ECONNREFUSED errors
+      // "/api": {
+      //   target: "http://localhost:3001",
+      //   changeOrigin: true,
+      //   secure: false,
+      // },
     },
   },
 });

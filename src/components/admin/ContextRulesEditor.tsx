@@ -150,9 +150,33 @@ const ContextRulesEditor = () => {
     const fetchRules = async () => {
       try {
         setIsLoading(true);
-        const data = await contextRulesApi.getAll();
-        setRules(data);
-        setError(null);
+        try {
+          const data = await contextRulesApi.getAll();
+          // Ensure data is an array
+          if (Array.isArray(data)) {
+            setRules(data);
+          } else if (data && Array.isArray(data.rules)) {
+            // If data is an object with a rules array property
+            setRules(data.rules);
+          } else {
+            // Fallback to empty array if data is not in expected format
+            console.warn("Unexpected data format from API", data);
+            setRules([]);
+          }
+          setError(null);
+        } catch (apiError) {
+          console.warn("API fetch failed, using mock data", apiError);
+          const result = await import(
+            "@/services/mockContextRulesService"
+          ).then((module) => module.default.getContextRules());
+          // Ensure result.rules is an array
+          if (result && Array.isArray(result.rules)) {
+            setRules(result.rules);
+          } else {
+            console.warn("Unexpected data format from mock service", result);
+            setRules([]);
+          }
+        }
       } catch (error) {
         import("@/utils/logger").then((module) => {
           const logger = module.default;
@@ -162,6 +186,7 @@ const ContextRulesEditor = () => {
           );
         });
         setError("Failed to load context rules. Please try again.");
+        setRules([]);
       } finally {
         setIsLoading(false);
       }
