@@ -11,6 +11,7 @@
  */
 
 import type { WebSocketMessage } from "@/types/chat";
+import logger from "@/utils/logger";
 
 type MessageCallback = (message: any) => void;
 type ConnectionCallback = () => void;
@@ -65,6 +66,7 @@ class WebSocketService {
   private connectionAttemptTimestamp = 0;
   private isReconnecting = false;
   private pendingReconnect = false;
+  private mockMode = false;
 
   constructor(config: WebSocketConfig) {
     this.url = config.url;
@@ -103,16 +105,13 @@ class WebSocketService {
             (t) => Date.now() - t < 60000, // Messages in the last minute
           ).length;
 
-          import("@/utils/logger").then((module) => {
-            const logger = module.default;
-            logger.debug("WebSocket performance metrics", {
-              tags: {
-                queueSize: String(queueSize),
-                messageRate: String(messageRate) + "/min",
-                connectionState: this.connectionState,
-                reconnectAttempts: String(this.reconnectAttempts),
-              },
-            });
+          logger.debug("WebSocket performance metrics", {
+            tags: {
+              queueSize: String(queueSize),
+              messageRate: String(messageRate) + "/min",
+              connectionState: this.connectionState,
+              reconnectAttempts: String(this.reconnectAttempts),
+            },
           });
         }
       }, 60000); // Log every minute
@@ -120,9 +119,38 @@ class WebSocketService {
   }
 
   /**
+   * Enable mock mode for development/testing
+   */
+  enableMockMode() {
+    this.mockMode = true;
+    this.setConnectionState(ConnectionState.CONNECTED);
+    logger.info("WebSocket mock mode enabled");
+    return this;
+  }
+
+  /**
+   * Disable mock mode
+   */
+  disableMockMode() {
+    this.mockMode = false;
+    if (!this.socket) {
+      this.setConnectionState(ConnectionState.DISCONNECTED);
+    }
+    logger.info("WebSocket mock mode disabled");
+    return this;
+  }
+
+  /**
    * Connect to the WebSocket server with connection timeout
    */
   connect() {
+    // If in mock mode, just simulate connection
+    if (this.mockMode) {
+      this.setConnectionState(ConnectionState.CONNECTED);
+      this.connectionCallbacks.forEach((callback) => callback());
+      return;
+    }
+
     if (this.socket?.readyState === WebSocket.OPEN) return;
     if (this.isReconnecting) return;
 
@@ -146,14 +174,11 @@ class WebSocketService {
       // Set connection timeout
       this.connectionTimeout = setTimeout(() => {
         if (this.connectionState === ConnectionState.CONNECTING) {
-          import("@/utils/logger").then((module) => {
-            const logger = module.default;
-            logger.warn("WebSocket connection timeout", {
-              tags: {
-                connectionTime:
-                  String(Date.now() - this.connectionAttemptTimestamp) + "ms",
-              },
-            });
+          logger.warn("WebSocket connection timeout", {
+            tags: {
+              connectionTime:
+                String(Date.now() - this.connectionAttemptTimestamp) + "ms",
+            },
           });
 
           // Force close and reconnect
@@ -178,14 +203,8 @@ class WebSocketService {
         }
 
         const connectionTime = Date.now() - this.connectionAttemptTimestamp;
-        import("@/utils/logger").then((module) => {
-          const logger = module.default;
-          logger.info(
-            `WebSocket connection established in ${connectionTime}ms`,
-            {
-              tags: { connectionTime: String(connectionTime) + "ms" },
-            },
-          );
+        logger.info(`WebSocket connection established in ${connectionTime}ms`, {
+          tags: { connectionTime: String(connectionTime) + "ms" },
         });
 
         this.reconnectAttempts = 0;
@@ -222,21 +241,18 @@ class WebSocketService {
           // Notify all message callbacks
           this.messageCallbacks.forEach((callback) => callback(data));
         } catch (error) {
-          import("@/utils/logger").then((module) => {
-            const logger = module.default;
-            logger.error(
-              "Error parsing WebSocket message",
-              error instanceof Error ? error : new Error(String(error)),
-              {
-                extra: {
-                  rawData:
-                    typeof event.data === "string"
-                      ? event.data.substring(0, 100)
-                      : "non-string data",
-                },
+          logger.error(
+            "Error parsing WebSocket message",
+            error instanceof Error ? error : new Error(String(error)),
+            {
+              extra: {
+                rawData:
+                  typeof event.data === "string"
+                    ? event.data.substring(0, 100)
+                    : "non-string data",
               },
-            );
-          });
+            },
+          );
         }
       };
 
@@ -247,21 +263,18 @@ class WebSocketService {
           this.connectionTimeout = null;
         }
 
-        import("@/utils/logger").then((module) => {
-          const logger = module.default;
-          logger.info(
-            `WebSocket connection closed: ${event.code} ${event.reason}`,
-            {
-              tags: {
-                code: String(event.code),
-                wasClean: String(event.wasClean),
-                connectionDuration: this.connectionAttemptTimestamp
-                  ? String(Date.now() - this.connectionAttemptTimestamp) + "ms"
-                  : "unknown",
-              },
+        logger.info(
+          `WebSocket connection closed: ${event.code} ${event.reason}`,
+          {
+            tags: {
+              code: String(event.code),
+              wasClean: String(event.wasClean),
+              connectionDuration: this.connectionAttemptTimestamp
+                ? String(Date.now() - this.connectionAttemptTimestamp) + "ms"
+                : "unknown",
             },
-          );
-        });
+          },
+        );
 
         this.socket = null;
         this.setConnectionState(ConnectionState.DISCONNECTED);
@@ -280,38 +293,30 @@ class WebSocketService {
           this.attemptReconnect();
         } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
           this.setConnectionState(ConnectionState.FAILED);
-          import("@/utils/logger").then((module) => {
-            const logger = module.default;
-            logger.error(
-              "WebSocket reconnection failed after maximum attempts",
-              {
-                tags: { maxAttempts: String(this.maxReconnectAttempts) },
-              },
-            );
+          logger.error("WebSocket reconnection failed after maximum attempts", {
+            tags: { maxAttempts: String(this.maxReconnectAttempts) },
           });
         }
       };
 
       this.socket.onerror = (error) => {
-        import("@/utils/logger").then((module) => {
-          const logger = module.default;
-          logger.error(
-            "WebSocket error",
-            new Error("WebSocket connection error"),
-            { extra: error },
-          );
-        });
+        logger.error(
+          "WebSocket error",
+          new Error("WebSocket connection error"),
+          { extra: error },
+        );
         this.errorCallbacks.forEach((callback) => callback(error));
       };
     } catch (error) {
-      import("@/utils/logger").then((module) => {
-        const logger = module.default;
-        logger.error(
-          "Failed to establish WebSocket connection",
-          error instanceof Error ? error : new Error(String(error)),
-        );
-      });
+      logger.error(
+        "Failed to establish WebSocket connection",
+        error instanceof Error ? error : new Error(String(error)),
+      );
       this.setConnectionState(ConnectionState.FAILED);
+
+      // Enable mock mode as fallback
+      logger.info("Enabling mock mode as fallback due to connection failure");
+      this.enableMockMode();
     }
   }
 
@@ -335,16 +340,10 @@ class WebSocketService {
    */
   private handleAuthResponse(data: any) {
     if (data.success) {
-      import("@/utils/logger").then((module) => {
-        const logger = module.default;
-        logger.info("WebSocket authentication successful");
-      });
+      logger.info("WebSocket authentication successful");
     } else {
-      import("@/utils/logger").then((module) => {
-        const logger = module.default;
-        logger.warn("WebSocket authentication failed", {
-          extra: { reason: data.reason || "Unknown reason" },
-        });
+      logger.warn("WebSocket authentication failed", {
+        extra: { reason: data.reason || "Unknown reason" },
       });
     }
   }
@@ -356,21 +355,21 @@ class WebSocketService {
     const previousState = this.connectionState;
     this.connectionState = state;
 
-    import("@/utils/logger").then((module) => {
-      const logger = module.default;
-      logger.info(
-        `WebSocket connection state changed: ${previousState} -> ${state}`,
-        {
-          tags: { previousState, currentState: state },
-        },
-      );
-    });
+    logger.info(
+      `WebSocket connection state changed: ${previousState} -> ${state}`,
+      {
+        tags: { previousState, currentState: state },
+      },
+    );
   }
 
   /**
    * Start heartbeat mechanism to detect dead connections
    */
   private startHeartbeat() {
+    // Don't start heartbeat in mock mode
+    if (this.mockMode) return;
+
     this.stopHeartbeat(); // Clear any existing intervals
 
     this.pingInterval = setInterval(() => {
@@ -380,11 +379,8 @@ class WebSocketService {
 
         // Set timeout for pong response
         this.pongTimeout = setTimeout(() => {
-          import("@/utils/logger").then((module) => {
-            const logger = module.default;
-            logger.warn("Pong response not received, connection may be dead", {
-              tags: { lastPingTime: new Date(this.lastPingTime).toISOString() },
-            });
+          logger.warn("Pong response not received, connection may be dead", {
+            tags: { lastPingTime: new Date(this.lastPingTime).toISOString() },
           });
 
           // Force reconnection
@@ -425,11 +421,8 @@ class WebSocketService {
     const latency = Date.now() - this.lastPingTime;
 
     if (this.debug) {
-      import("@/utils/logger").then((module) => {
-        const logger = module.default;
-        logger.debug(`WebSocket heartbeat received, latency: ${latency}ms`, {
-          tags: { latency: String(latency) + "ms" },
-        });
+      logger.debug(`WebSocket heartbeat received, latency: ${latency}ms`, {
+        tags: { latency: String(latency) + "ms" },
       });
     }
 
@@ -460,19 +453,16 @@ class WebSocketService {
     const delay = baseDelay + jitter;
 
     this.setConnectionState(ConnectionState.RECONNECTING);
-    import("@/utils/logger").then((module) => {
-      const logger = module.default;
-      logger.info(
-        `Attempting to reconnect in ${Math.round(delay)}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
-        {
-          tags: {
-            attempt: String(this.reconnectAttempts),
-            maxAttempts: String(this.maxReconnectAttempts),
-            delay: String(Math.round(delay)) + "ms",
-          },
+    logger.info(
+      `Attempting to reconnect in ${Math.round(delay)}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
+      {
+        tags: {
+          attempt: String(this.reconnectAttempts),
+          maxAttempts: String(this.maxReconnectAttempts),
+          delay: String(Math.round(delay)) + "ms",
         },
-      );
-    });
+      },
+    );
 
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
@@ -496,6 +486,12 @@ class WebSocketService {
    * Disconnect from the WebSocket server
    */
   disconnect() {
+    // If in mock mode, just simulate disconnection
+    if (this.mockMode) {
+      this.setConnectionState(ConnectionState.DISCONNECTED);
+      return;
+    }
+
     this.setConnectionState(ConnectionState.DISCONNECTED);
 
     if (this.socket) {
@@ -538,27 +534,55 @@ class WebSocketService {
    * Send a message to the WebSocket server
    */
   sendMessage(message: any): boolean {
-    // Check rate limiting
-    if (this.isRateLimited()) {
-      import("@/utils/logger").then((module) => {
-        const logger = module.default;
-        logger.warn("Rate limit exceeded, queueing message", {
-          tags: {
-            messageType: message.type,
-            rateLimit: String(this.rateLimitPerSecond) + "/sec",
-          },
-        });
-      });
-      this.queueMessage(message);
-      return false;
-    }
-
     // Add timestamp and client ID to outgoing messages
     const enhancedMessage = {
       ...message,
       timestamp: message.timestamp || new Date().toISOString(),
       clientId: this.getClientId(),
     };
+
+    // If in mock mode, simulate message handling
+    if (this.mockMode) {
+      // Track message for rate limiting
+      this.messagesSentTimestamps.push(Date.now());
+
+      // Simulate response for certain message types
+      setTimeout(() => {
+        if (message.type === "ping") {
+          this.handlePong();
+        } else if (message.type === "auth") {
+          this.handleAuthResponse({ success: true });
+        } else if (message.type === "message" || message.type === "chat") {
+          // Simulate chat response
+          const response = {
+            type: "message",
+            payload: {
+              id: `msg_${Date.now()}`,
+              content: `This is a mock response to your message. In production, this would be processed by the server.`,
+              sender: "assistant",
+              timestamp: new Date().toISOString(),
+            },
+            timestamp: new Date().toISOString(),
+            clientId: this.clientId,
+          };
+          this.messageCallbacks.forEach((callback) => callback(response));
+        }
+      }, 500); // Simulate network delay
+
+      return true;
+    }
+
+    // Check rate limiting
+    if (this.isRateLimited()) {
+      logger.warn("Rate limit exceeded, queueing message", {
+        tags: {
+          messageType: message.type,
+          rateLimit: String(this.rateLimitPerSecond) + "/sec",
+        },
+      });
+      this.queueMessage(enhancedMessage);
+      return false;
+    }
 
     if (this.socket?.readyState === WebSocket.OPEN) {
       try {
@@ -567,30 +591,24 @@ class WebSocketService {
         this.messagesSentTimestamps.push(Date.now());
         return true;
       } catch (error) {
-        import("@/utils/logger").then((module) => {
-          const logger = module.default;
-          logger.error(
-            "Error sending WebSocket message",
-            error instanceof Error ? error : new Error(String(error)),
-            { tags: { messageType: enhancedMessage.type } },
-          );
-        });
+        logger.error(
+          "Error sending WebSocket message",
+          error instanceof Error ? error : new Error(String(error)),
+          { tags: { messageType: enhancedMessage.type } },
+        );
         this.queueMessage(enhancedMessage);
         return false;
       }
     } else {
-      import("@/utils/logger").then((module) => {
-        const logger = module.default;
-        logger.warn(
-          "Cannot send message: WebSocket is not connected, queueing message",
-          {
-            tags: {
-              messageType: enhancedMessage.type,
-              connectionState: this.connectionState,
-            },
+      logger.warn(
+        "Cannot send message: WebSocket is not connected, queueing message",
+        {
+          tags: {
+            messageType: enhancedMessage.type,
+            connectionState: this.connectionState,
           },
-        );
-      });
+        },
+      );
       this.queueMessage(enhancedMessage);
       return false;
     }
@@ -607,14 +625,11 @@ class WebSocketService {
     if (this.messageQueue.length < this.maxQueueSize) {
       this.messageQueue.push(message);
     } else {
-      import("@/utils/logger").then((module) => {
-        const logger = module.default;
-        logger.warn("Message queue full, dropping oldest message", {
-          tags: {
-            queueSize: String(this.messageQueue.length),
-            maxSize: String(this.maxQueueSize),
-          },
-        });
+      logger.warn("Message queue full, dropping oldest message", {
+        tags: {
+          queueSize: String(this.messageQueue.length),
+          maxSize: String(this.maxQueueSize),
+        },
       });
       this.messageQueue.shift(); // Remove oldest message
       this.messageQueue.push(message); // Add new message
@@ -635,11 +650,8 @@ class WebSocketService {
   private processMessageQueue() {
     if (this.messageQueue.length === 0) return;
 
-    import("@/utils/logger").then((module) => {
-      const logger = module.default;
-      logger.info(`Processing ${this.messageQueue.length} queued messages`, {
-        tags: { queueSize: String(this.messageQueue.length) },
-      });
+    logger.info(`Processing ${this.messageQueue.length} queued messages`, {
+      tags: { queueSize: String(this.messageQueue.length) },
     });
 
     // Process queued messages with rate limiting
@@ -682,18 +694,15 @@ class WebSocketService {
     const processedCount = processNextBatch();
 
     if (processedCount > 0) {
-      import("@/utils/logger").then((module) => {
-        const logger = module.default;
-        logger.debug(
-          `Processed ${processedCount} queued messages, ${this.messageQueue.length} remaining`,
-          {
-            tags: {
-              processed: String(processedCount),
-              remaining: String(this.messageQueue.length),
-            },
+      logger.debug(
+        `Processed ${processedCount} queued messages, ${this.messageQueue.length} remaining`,
+        {
+          tags: {
+            processed: String(processedCount),
+            remaining: String(this.messageQueue.length),
           },
-        );
-      });
+        },
+      );
     }
   }
 
@@ -747,7 +756,7 @@ class WebSocketService {
    * Check if the WebSocket is connected
    */
   isConnected() {
-    return this.socket?.readyState === WebSocket.OPEN;
+    return this.mockMode || this.socket?.readyState === WebSocket.OPEN;
   }
 
   /**
@@ -856,6 +865,7 @@ class WebSocketService {
       reconnectAttempts: this.reconnectAttempts,
       maxReconnectAttempts: this.maxReconnectAttempts,
       isConnected: this.isConnected(),
+      mockMode: this.mockMode,
       messageRatePerMinute: this.messagesSentTimestamps.filter(
         (t) => Date.now() - t < 60000, // Messages in the last minute
       ).length,
@@ -865,8 +875,7 @@ class WebSocketService {
 
 // Create a singleton instance with a configurable URL from environment variables
 // Default to a secure WebSocket connection if no URL is provided
-const WS_URL =
-  import.meta.env.VITE_WEBSOCKET_URL || "wss://api.chatservice.io/ws";
+const WS_URL = import.meta.env.VITE_WEBSOCKET_URL || "ws://localhost:8080";
 
 // Initialize the WebSocket service with production-ready configuration
 const websocketService = new WebSocketService({
@@ -885,13 +894,17 @@ const websocketService = new WebSocketService({
 if (import.meta.env.VITE_WS_AUTO_CONNECT !== "false") {
   // Small delay to ensure app is fully loaded before connecting
   setTimeout(() => {
-    import("@/utils/logger").then((module) => {
-      const logger = module.default;
-      logger.info("Auto-connecting to WebSocket server", {
-        tags: { url: WS_URL, environment: import.meta.env.MODE },
-      });
+    logger.info("Auto-connecting to WebSocket server", {
+      tags: { url: WS_URL, environment: import.meta.env.MODE },
     });
-    websocketService.connect();
+
+    try {
+      websocketService.connect();
+    } catch (error) {
+      logger.error("Failed to auto-connect to WebSocket server", error);
+      // Enable mock mode as fallback
+      websocketService.enableMockMode();
+    }
   }, 1000);
 }
 

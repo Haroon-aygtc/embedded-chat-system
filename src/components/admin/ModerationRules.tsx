@@ -29,11 +29,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-import { AlertCircle, Plus, Edit, Trash2 } from "lucide-react";
+import { AlertCircle, Plus, Edit, Trash2, RefreshCw } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function ModerationRules() {
   const [rules, setRules] = useState<ModerationRule[]>([]);
@@ -46,6 +46,11 @@ export default function ModerationRules() {
     flagged: boolean;
     modifiedContent?: string;
   } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [ruleToDelete, setRuleToDelete] = useState<string | null>(null);
+  const [testLoading, setTestLoading] = useState(false);
 
   useEffect(() => {
     loadRules();
@@ -53,11 +58,13 @@ export default function ModerationRules() {
 
   const loadRules = async () => {
     setLoading(true);
+    setError(null);
     try {
       const rules = await moderationService.getRules();
       setRules(rules);
     } catch (error) {
       console.error("Error loading moderation rules:", error);
+      setError("Failed to load moderation rules. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -81,21 +88,54 @@ export default function ModerationRules() {
 
   const handleSaveRule = async () => {
     if (!currentRule.name || !currentRule.pattern) {
-      return; // Validation would be better in a real app
+      setError("Rule name and pattern are required");
+      return;
     }
 
+    setSaveLoading(true);
+    setError(null);
     try {
       await moderationService.saveRule(currentRule as any);
       setDialogOpen(false);
       loadRules();
     } catch (error) {
       console.error("Error saving rule:", error);
+      setError("Failed to save rule. Please try again.");
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
+  const handleDeleteRule = async (ruleId: string) => {
+    setRuleToDelete(ruleId);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteRule = async () => {
+    if (!ruleToDelete) return;
+
+    setSaveLoading(true);
+    setError(null);
+    try {
+      await moderationService.deleteRule(ruleToDelete);
+      setDeleteConfirmOpen(false);
+      setRuleToDelete(null);
+      loadRules();
+    } catch (error) {
+      console.error("Error deleting rule:", error);
+      setError("Failed to delete rule. Please try again.");
+    } finally {
+      setSaveLoading(false);
     }
   };
 
   const handleTestRule = async () => {
-    if (!testInput) return;
+    if (!testInput) {
+      setTestResult(null);
+      return;
+    }
 
+    setTestLoading(true);
     try {
       // For testing purposes, we'll use a dummy user ID
       const result = await moderationService.checkContent(
@@ -105,6 +145,9 @@ export default function ModerationRules() {
       setTestResult(result);
     } catch (error) {
       console.error("Error testing rule:", error);
+      setError("Failed to test content against rules. Please try again.");
+    } finally {
+      setTestLoading(false);
     }
   };
 
@@ -135,6 +178,14 @@ export default function ModerationRules() {
 
   return (
     <div className="container mx-auto py-6">
+      {error && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Moderation Rules</h1>
         <Button onClick={handleCreateRule}>
@@ -185,6 +236,14 @@ export default function ModerationRules() {
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteRule(rule.id)}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
                   </CardHeader>
@@ -230,8 +289,19 @@ export default function ModerationRules() {
                     rows={5}
                   />
                 </div>
-                <Button onClick={handleTestRule} className="w-full">
-                  Test Content
+                <Button
+                  onClick={handleTestRule}
+                  className="w-full"
+                  disabled={testLoading || !testInput}
+                >
+                  {testLoading ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Testing...
+                    </>
+                  ) : (
+                    "Test Content"
+                  )}
                 </Button>
 
                 {testResult && (
@@ -277,6 +347,7 @@ export default function ModerationRules() {
         </div>
       </div>
 
+      {/* Create/Edit Rule Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
@@ -387,11 +458,60 @@ export default function ModerationRules() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setDialogOpen(false)}
+              disabled={saveLoading}
+            >
               Cancel
             </Button>
-            <Button onClick={handleSaveRule}>
-              {currentRule.id ? "Update" : "Create"}
+            <Button onClick={handleSaveRule} disabled={saveLoading}>
+              {saveLoading ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : currentRule.id ? (
+                "Update"
+              ) : (
+                "Create"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Confirm Deletion</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this moderation rule? This action
+              cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteConfirmOpen(false)}
+              disabled={saveLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteRule}
+              disabled={saveLoading}
+            >
+              {saveLoading ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Rule"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

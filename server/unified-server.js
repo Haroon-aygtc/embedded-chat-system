@@ -110,112 +110,35 @@ function createExpressApp() {
  * Configure API routes
  */
 function configureApiRoutes(app) {
-  // Health check endpoint
-  app.get("/api/health", (req, res) => {
-    res.status(200).json({
-      status: "ok",
-      timestamp: new Date().toISOString(),
-      environment: NODE_ENV,
-    });
-  });
+  // Import API routes
+  import("./api/routes/index.js")
+    .then((module) => {
+      const apiRoutes = module.default;
 
-  // Auth API
-  app.post("/api/auth/register", async (req, res) => {
-    try {
-      const { email, password, name } = req.body;
+      // Mount API routes under /api
+      app.use("/api", apiRoutes);
 
-      if (!email || !password) {
-        return res
-          .status(400)
-          .json({ error: "Email and password are required" });
-      }
+      logger.success("API", "API routes configured successfully");
+    })
+    .catch((error) => {
+      logger.error("API", `Failed to load API routes: ${error.message}`);
 
-      // TODO: Replace with your database implementation
-      // Mock successful registration
-      const mockUser = {
-        id: `user_${Math.random().toString(36).substring(2, 9)}`,
-        email,
-        name: name || email.split("@")[0],
-        role: "user",
-        created_at: new Date().toISOString(),
-      };
-
-      res.status(201).json({ success: true, user: mockUser });
-    } catch (error) {
-      logger.error("Auth", `Error registering user: ${error.message}`);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post("/api/auth/login", async (req, res) => {
-    try {
-      const { email, password } = req.body;
-
-      if (!email || !password) {
-        return res
-          .status(400)
-          .json({ error: "Email and password are required" });
-      }
-
-      // TODO: Replace with your database implementation
-      // Mock successful login
-      const mockUser = {
-        id: `user_${Math.random().toString(36).substring(2, 9)}`,
-        email,
-        name: email.split("@")[0],
-        role: "user",
-        created_at: new Date().toISOString(),
-      };
-
-      const mockSession = {
-        access_token: `token_${Math.random().toString(36).substring(2, 15)}`,
-        expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
-      };
-
-      res.status(200).json({
-        success: true,
-        user: mockUser,
-        session: mockSession,
+      // Fallback to basic routes if API routes fail to load
+      // Health check endpoint
+      app.get("/api/health", (req, res) => {
+        res.status(200).json({
+          success: true,
+          data: {
+            status: "ok",
+            timestamp: new Date().toISOString(),
+            environment: NODE_ENV,
+          },
+          meta: {
+            timestamp: new Date().toISOString(),
+          },
+        });
       });
-    } catch (error) {
-      logger.error("Auth", `Error logging in user: ${error.message}`);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Context Rules API
-  app.get("/api/context-rules", async (req, res) => {
-    try {
-      // TODO: Replace with your database implementation
-      // Mock context rules data
-      const mockContextRules = [
-        {
-          id: 1,
-          name: "General Knowledge",
-          description: "Allows responses about general topics",
-          priority: 100,
-          active: true,
-          created_at: new Date().toISOString(),
-        },
-        {
-          id: 2,
-          name: "Business Domain",
-          description: "Restricts responses to business-related topics",
-          priority: 200,
-          active: true,
-          created_at: new Date().toISOString(),
-        },
-      ];
-
-      res.status(200).json(mockContextRules);
-    } catch (error) {
-      logger.error("API", `Error fetching context rules: ${error.message}`);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Add more API routes as needed...
-  // This is a simplified version - in production, you would import route modules
+    });
 
   return app;
 }

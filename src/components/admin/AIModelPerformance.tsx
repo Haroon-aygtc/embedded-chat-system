@@ -9,8 +9,10 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 import { getMySQLClient } from "@/services/mysqlClient";
+import aiService from "@/services/aiService";
+import { Button } from "@/components/ui/button";
 
 interface ModelData {
   name: string;
@@ -60,146 +62,189 @@ const AIModelPerformance: React.FC<AIModelPerformanceProps> = ({
         startDate.setMonth(now.getMonth() - 1);
       }
 
-      const sequelize = await getMySQLClient();
+      try {
+        // Try to fetch from API service first
+        const result = await aiService.getModelPerformance(timeRange);
 
-      // Fetch model distribution data
-      const modelUsageData = await sequelize.query(
-        `SELECT model_used, created_at, metadata 
-         FROM ai_interaction_logs 
-         WHERE created_at >= ? 
-         ORDER BY created_at DESC`,
-        {
-          replacements: [startDate.toISOString()],
-          type: sequelize.QueryTypes.SELECT,
-        },
-      );
-
-      // Process model data
-      const modelCounts: Record<string, number> = {};
-      const modelResponseTimes: Record<string, number[]> = {};
-      const modelErrors: Record<string, number> = {};
-
-      modelUsageData.forEach((log: any) => {
-        const model = log.model_used;
-
-        // Count requests per model
-        modelCounts[model] = (modelCounts[model] || 0) + 1;
-
-        // Parse metadata if it's a string
-        const metadata =
-          typeof log.metadata === "string"
-            ? JSON.parse(log.metadata)
-            : log.metadata || {};
-
-        // Track response times
-        if (metadata?.responseTime) {
-          if (!modelResponseTimes[model]) modelResponseTimes[model] = [];
-          modelResponseTimes[model].push(metadata.responseTime);
+        // Process model data
+        if (result.modelUsage && result.modelUsage.length > 0) {
+          const formattedModelData: ModelData[] = result.modelUsage.map(
+            (model: any) => ({
+              name: model.model_used,
+              requestCount: model.count,
+              avgResponseTime:
+                result.avgResponseTimes?.find(
+                  (m: any) => m.model_used === model.model_used,
+                )?.avg_time || 0,
+              errorRate: 0, // Default if not available
+              isActive: true,
+            }),
+          );
+          setModelData(formattedModelData);
         }
 
-        // Track errors
-        if (metadata?.error) {
-          modelErrors[model] = (modelErrors[model] || 0) + 1;
+        // Process context data if available
+        if (result.contextUsage && result.contextUsage.length > 0) {
+          const totalContexts = result.contextUsage.reduce(
+            (sum: number, ctx: any) => sum + ctx.count,
+            0,
+          );
+          const formattedContextData: ContextData[] = result.contextUsage.map(
+            (ctx: any) => ({
+              name: ctx.context_name || "No Context",
+              percentage:
+                totalContexts > 0 ? (ctx.count / totalContexts) * 100 : 0,
+              effectiveness: ctx.effectiveness || 90, // Default to 90% if not available
+            }),
+          );
+          setContextData(formattedContextData);
         }
-      });
+      } catch (apiError) {
+        console.error("API error fetching model performance data:", apiError);
+        setError(
+          "Failed to fetch from API, falling back to direct database query",
+        );
 
-      // Calculate total requests
-      const totalRequests = Object.values(modelCounts).reduce(
-        (sum, count) => sum + count,
-        0,
-      );
+        // Fallback to direct database query
+        const sequelize = await getMySQLClient();
 
-      // Format model data
-      const formattedModelData: ModelData[] = Object.keys(modelCounts).map(
-        (model) => {
-          const requestCount = modelCounts[model];
-          const responseTimes = modelResponseTimes[model] || [];
-          const avgResponseTime =
-            responseTimes.length > 0
-              ? responseTimes.reduce((sum, time) => sum + time, 0) /
-                responseTimes.length
-              : 0;
-          const errorCount = modelErrors[model] || 0;
-          const errorRate =
-            requestCount > 0 ? (errorCount / requestCount) * 100 : 0;
+        // Fetch model distribution data
+        const modelUsageData = await sequelize.query(
+          `SELECT model_used, created_at, metadata 
+           FROM ai_interaction_logs 
+           WHERE created_at >= ? 
+           ORDER BY created_at DESC`,
+          {
+            replacements: [startDate.toISOString()],
+            type: sequelize.QueryTypes.SELECT,
+          },
+        );
+
+        // Process model data
+        const modelCounts: Record<string, number> = {};
+        const modelResponseTimes: Record<string, number[]> = {};
+        const modelErrors: Record<string, number> = {};
+
+        modelUsageData.forEach((log: any) => {
+          const model = log.model_used;
+
+          // Count requests per model
+          modelCounts[model] = (modelCounts[model] || 0) + 1;
+
+          // Parse metadata if it's a string
+          const metadata =
+            typeof log.metadata === "string"
+              ? JSON.parse(log.metadata)
+              : log.metadata || {};
+
+          // Track response times
+          if (metadata?.responseTime) {
+            if (!modelResponseTimes[model]) modelResponseTimes[model] = [];
+            modelResponseTimes[model].push(metadata.responseTime);
+          }
+
+          // Track errors
+          if (metadata?.error) {
+            modelErrors[model] = (modelErrors[model] || 0) + 1;
+          }
+        });
+
+        // Format model data
+        const formattedModelData: ModelData[] = Object.keys(modelCounts).map(
+          (model) => {
+            const requestCount = modelCounts[model];
+            const responseTimes = modelResponseTimes[model] || [];
+            const avgResponseTime =
+              responseTimes.length > 0
+                ? responseTimes.reduce((sum, time) => sum + time, 0) /
+                  responseTimes.length
+                : 0;
+            const errorCount = modelErrors[model] || 0;
+            const errorRate =
+              requestCount > 0 ? (errorCount / requestCount) * 100 : 0;
+
+            return {
+              name: model,
+              requestCount,
+              avgResponseTime,
+              errorRate,
+              isActive: true,
+            };
+          },
+        );
+
+        setModelData(formattedModelData);
+
+        // Fetch context rule data with metadata for effectiveness calculation
+        const contextRuleData = await sequelize.query(
+          `SELECT l.context_rule_id, c.name as context_rule_name, l.metadata 
+           FROM ai_interaction_logs l
+           LEFT JOIN context_rules c ON l.context_rule_id = c.id
+           WHERE l.created_at >= ?`,
+          {
+            replacements: [startDate.toISOString()],
+            type: sequelize.QueryTypes.SELECT,
+          },
+        );
+
+        // Process context data
+        const contextCounts: Record<string, number> = {};
+        const contextSuccessCounts: Record<string, number> = {};
+        let totalContexts = 0;
+
+        contextRuleData.forEach((log: any) => {
+          const contextName = log.context_rule_name || "No Context";
+          contextCounts[contextName] = (contextCounts[contextName] || 0) + 1;
+          totalContexts++;
+
+          // Parse metadata if it's a string
+          const metadata =
+            typeof log.metadata === "string"
+              ? JSON.parse(log.metadata || "{}")
+              : log.metadata || {};
+
+          // Track successful interactions
+          if (metadata?.success === true || metadata?.status === "success") {
+            contextSuccessCounts[contextName] =
+              (contextSuccessCounts[contextName] || 0) + 1;
+          }
+        });
+
+        // Format context data with calculated effectiveness
+        const formattedContextData: ContextData[] = Object.keys(
+          contextCounts,
+        ).map((context) => {
+          const totalInteractions = contextCounts[context] || 0;
+          const successfulInteractions = contextSuccessCounts[context] || 0;
+
+          // Calculate effectiveness as the percentage of successful interactions
+          const effectiveness =
+            totalInteractions > 0
+              ? (successfulInteractions / totalInteractions) * 100
+              : 90; // Default to 90% if no data available
 
           return {
-            name: model,
-            requestCount,
-            avgResponseTime,
-            errorRate,
-            isActive: true,
+            name: context,
+            percentage:
+              totalContexts > 0
+                ? (contextCounts[context] / totalContexts) * 100
+                : 0,
+            effectiveness: effectiveness,
           };
-        },
-      );
+        });
 
-      setModelData(formattedModelData);
-
-      // Fetch context rule data with metadata for effectiveness calculation
-      const contextRuleData = await sequelize.query(
-        `SELECT l.context_rule_id, c.name as context_rule_name, l.metadata 
-         FROM ai_interaction_logs l
-         LEFT JOIN context_rules c ON l.context_rule_id = c.id
-         WHERE l.created_at >= ?`,
-        {
-          replacements: [startDate.toISOString()],
-          type: sequelize.QueryTypes.SELECT,
-        },
-      );
-
-      // Process context data
-      const contextCounts: Record<string, number> = {};
-      const contextSuccessCounts: Record<string, number> = {};
-      let totalContexts = 0;
-
-      contextRuleData.forEach((log: any) => {
-        const contextName = log.context_rule_name || "No Context";
-        contextCounts[contextName] = (contextCounts[contextName] || 0) + 1;
-        totalContexts++;
-
-        // Parse metadata if it's a string
-        const metadata =
-          typeof log.metadata === "string"
-            ? JSON.parse(log.metadata || "{}")
-            : log.metadata || {};
-
-        // Track successful interactions
-        if (metadata?.success === true || metadata?.status === "success") {
-          contextSuccessCounts[contextName] =
-            (contextSuccessCounts[contextName] || 0) + 1;
-        }
-      });
-
-      // Format context data with calculated effectiveness
-      const formattedContextData: ContextData[] = Object.keys(
-        contextCounts,
-      ).map((context) => {
-        const totalInteractions = contextCounts[context] || 0;
-        const successfulInteractions = contextSuccessCounts[context] || 0;
-
-        // Calculate effectiveness as the percentage of successful interactions
-        const effectiveness =
-          totalInteractions > 0
-            ? (successfulInteractions / totalInteractions) * 100
-            : 90; // Default to 90% if no data available
-
-        return {
-          name: context,
-          percentage:
-            totalContexts > 0
-              ? (contextCounts[context] / totalContexts) * 100
-              : 0,
-          effectiveness: effectiveness,
-        };
-      });
-
-      setContextData(formattedContextData);
+        setContextData(formattedContextData);
+      }
     } catch (err) {
       console.error("Error fetching AI model performance data:", err);
       setError("Failed to load performance data. Please try again.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRefresh = () => {
+    fetchPerformanceData();
   };
 
   if (loading) {
@@ -213,8 +258,19 @@ const AIModelPerformance: React.FC<AIModelPerformanceProps> = ({
   if (error) {
     return (
       <div className="p-4 border border-red-300 bg-red-50 text-red-800 rounded-md">
-        <p className="font-medium">Error</p>
+        <div className="flex items-center gap-2 mb-2">
+          <AlertCircle className="h-5 w-5" />
+          <p className="font-medium">Error</p>
+        </div>
         <p>{error}</p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          className="mt-4"
+        >
+          Try Again
+        </Button>
       </div>
     );
   }
@@ -227,13 +283,26 @@ const AIModelPerformance: React.FC<AIModelPerformanceProps> = ({
           There is no AI model performance data available for the selected time
           period.
         </p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          className="mt-4"
+        >
+          Refresh
+        </Button>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold">AI Model Performance</h2>
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-bold">AI Model Performance</h2>
+        <Button variant="outline" size="sm" onClick={handleRefresh}>
+          Refresh Data
+        </Button>
+      </div>
 
       <Tabs defaultValue={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-2">
@@ -294,7 +363,7 @@ const AIModelPerformance: React.FC<AIModelPerformanceProps> = ({
               {modelData.length > 0 && (
                 <div className="mt-6 space-y-4">
                   <h3 className="text-sm font-medium">Model Performance</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {modelData.slice(0, 2).map((model, index) => (
                       <div
                         key={model.name}

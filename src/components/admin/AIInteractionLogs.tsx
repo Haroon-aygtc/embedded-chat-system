@@ -58,7 +58,7 @@ const AIInteractionLogs = () => {
   const [dateRange, setDateRange] = useState<{
     from: Date | null;
     to: Date | null;
-  }>({ from: null, to: null });
+  } | null>({ from: null, to: null });
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [contextRules, setContextRules] = useState<
@@ -102,8 +102,8 @@ const AIInteractionLogs = () => {
         query: searchTerm || undefined,
         modelUsed: modelFilter || undefined,
         contextRuleId: contextFilter || undefined,
-        startDate: dateRange.from ? dateRange.from.toISOString() : undefined,
-        endDate: dateRange.to ? dateRange.to.toISOString() : undefined,
+        startDate: dateRange?.from ? dateRange.from.toISOString() : undefined,
+        endDate: dateRange?.to ? dateRange.to.toISOString() : undefined,
       };
 
       // Fetch logs using aiService
@@ -165,12 +165,12 @@ const AIInteractionLogs = () => {
         }
       }
 
-      if (dateRange.from) {
+      if (dateRange?.from) {
         conditions.push("l.created_at >= ?");
         replacements.push(dateRange.from.toISOString());
       }
 
-      if (dateRange.to) {
+      if (dateRange?.to) {
         const endDate = new Date(dateRange.to);
         endDate.setDate(endDate.getDate() + 1);
         conditions.push("l.created_at < ?");
