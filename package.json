@@ -12,6 +12,7 @@
     "dev:all": "node server/unified-server.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.0",
     "@hookform/resolvers": "^3.6.0",
     "@huggingface/inference": "^3.6.2",
     "@radix-ui/react-accordion": "^1.1.2",

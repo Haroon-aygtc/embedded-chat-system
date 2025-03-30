@@ -15,6 +15,7 @@ import {
   LogOut,
   Key,
   Globe,
+  Cpu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -165,6 +166,12 @@ const Sidebar = ({
       label: "API Keys",
       icon: <Key size={20} />,
       path: "/admin/api-keys",
+    },
+    {
+      id: "aiconfig",
+      label: "AI Configuration",
+      icon: <Cpu size={20} />,
+      path: "/admin/ai-config",
     },
     {
       id: "users",

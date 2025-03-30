@@ -47,6 +47,7 @@ export const env = {
   // API keys
   GEMINI_API_KEY: getEnv("GEMINI_API_KEY"),
   HUGGINGFACE_API_KEY: getEnv("HUGGINGFACE_API_KEY"),
+  GROK_API_KEY: getEnv("GROK_API_KEY"),
 
   // Server configuration
   PORT: getEnv("PORT", "5173"),

@@ -11,6 +11,10 @@ export interface GenerateResponseRequest {
   userId: string;
   knowledgeBaseIds?: string[];
   preferredModel?: string;
+  systemPrompt?: string;
+  maxTokens?: number;
+  temperature?: number;
+  additionalParams?: Record<string, any>;
 }
 
 export interface AIModelResponse {
@@ -73,6 +77,13 @@ export interface AIPerformanceMetrics {
   timeRange: string;
 }
 
+export interface AIModelInfo {
+  id: string;
+  name: string;
+  provider: string;
+  isAvailable?: boolean;
+}
+
 export const aiEndpoints = {
   /**
    * Generate a response using the appropriate AI model
@@ -110,5 +121,28 @@ export const aiEndpoints = {
     return api.get<AIPerformanceMetrics>("/ai/performance", {
       params: { timeRange },
     });
+  },
+
+  /**
+   * Get available AI models
+   */
+  getAvailableModels: async (): Promise<ApiResponse<AIModelInfo[]>> => {
+    return api.get<AIModelInfo[]>("/ai/models");
+  },
+
+  /**
+   * Set the default AI model
+   */
+  setDefaultModel: async (
+    modelId: string,
+  ): Promise<ApiResponse<{ success: boolean }>> => {
+    return api.post<{ success: boolean }>("/ai/models/default", { modelId });
+  },
+
+  /**
+   * Get the default AI model
+   */
+  getDefaultModel: async (): Promise<ApiResponse<AIModelInfo>> => {
+    return api.get<AIModelInfo>("/ai/models/default");
   },
 };

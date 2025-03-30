@@ -1,10 +1,11 @@
-import { Suspense, useEffect } from "react";
+import { Suspense } from "react";
 import { Routes, Route, useRoutes } from "react-router-dom";
 import routes from "tempo-routes";
 import AppRoutes from "@/routes";
 import { AuthProvider } from "@/context/AuthContext";
 import ErrorBoundary from "@/components/ui/error-boundary";
 import { Toaster } from "@/components/ui/toaster";
+import { useEffect } from "react";
 
 function App() {
   // Initialize any global services or listeners

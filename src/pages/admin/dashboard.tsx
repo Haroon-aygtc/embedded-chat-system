@@ -18,6 +18,7 @@ import {
   Database,
   BookOpen,
   History,
+  Cpu,
 } from "lucide-react";
 
 import WidgetConfigurator from "@/components/admin/WidgetConfigurator";
@@ -29,6 +30,7 @@ import KnowledgeBaseManager from "@/components/admin/KnowledgeBaseManager";
 import AIInteractionLogs from "@/components/admin/AIInteractionLogs";
 import SystemSettings from "@/components/admin/SystemSettings";
 import UserManagement from "@/components/admin/UserManagement";
+import AIConfiguration from "@/components/admin/AIConfiguration";
 import { useAdmin } from "@/context/AdminContext";
 
 const Dashboard = () => {
@@ -155,6 +157,15 @@ const Dashboard = () => {
             <BookOpen className="h-4 w-4" />
             Users
           </Button>
+          <Button
+            variant={activeSection === "aiconfig" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveSection("aiconfig")}
+            className="flex items-center gap-2"
+          >
+            <Cpu className="h-4 w-4" />
+            AI Configuration
+          </Button>
         </div>
 
         <TabsContent value="overview" className="space-y-6">
@@ -166,9 +177,9 @@ const Dashboard = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">1,248</div>
+                <div className="text-2xl font-bold">Loading...</div>
                 <p className="text-xs text-muted-foreground">
-                  +12% from last month
+                  Fetching data...
                 </p>
               </CardContent>
             </Card>
@@ -179,9 +190,9 @@ const Dashboard = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">342</div>
+                <div className="text-2xl font-bold">Loading...</div>
                 <p className="text-xs text-muted-foreground">
-                  +5% from last month
+                  Fetching data...
                 </p>
               </CardContent>
             </Card>
@@ -192,9 +203,9 @@ const Dashboard = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">98.7%</div>
+                <div className="text-2xl font-bold">Loading...</div>
                 <p className="text-xs text-muted-foreground">
-                  +0.5% from last month
+                  Fetching data...
                 </p>
               </CardContent>
             </Card>
@@ -205,9 +216,9 @@ const Dashboard = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">1.2s</div>
+                <div className="text-2xl font-bold">Loading...</div>
                 <p className="text-xs text-muted-foreground">
-                  -0.3s from last month
+                  Fetching data...
                 </p>
               </CardContent>
             </Card>
@@ -255,26 +266,26 @@ const Dashboard = () => {
               <CardContent className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-sm">API Status</span>
-                  <span className="text-sm font-medium text-green-600">
-                    Operational
+                  <span className="text-sm font-medium text-gray-600">
+                    Checking...
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm">Gemini API</span>
-                  <span className="text-sm font-medium text-green-600">
-                    Connected
+                  <span className="text-sm font-medium text-gray-600">
+                    Checking...
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm">Hugging Face API</span>
-                  <span className="text-sm font-medium text-green-600">
-                    Connected
+                  <span className="text-sm font-medium text-gray-600">
+                    Checking...
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm">Database</span>
-                  <span className="text-sm font-medium text-green-600">
-                    Healthy
+                  <span className="text-sm font-medium text-gray-600">
+                    Checking...
                   </span>
                 </div>
               </CardContent>
@@ -316,6 +327,10 @@ const Dashboard = () => {
 
         <TabsContent value="users">
           <UserManagement />
+        </TabsContent>
+
+        <TabsContent value="aiconfig">
+          <AIConfiguration />
         </TabsContent>
       </Tabs>
     </div>

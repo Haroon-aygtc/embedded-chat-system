@@ -1,150 +1,169 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Avatar } from "@/components/ui/avatar";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
-import { Bot, User } from "lucide-react";
-import { Message } from "@/types/chat";
+import React, { useRef, useEffect } from "react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ThumbsUp, ThumbsDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
-type ChatMessagesProps = {
-  messages?: Message[];
-  isLoading?: boolean;
-  className?: string;
-};
+interface Message {
+  id: string;
+  content: string;
+  role: "user" | "assistant" | "system";
+  timestamp: Date;
+  status?: "sending" | "sent" | "error";
+}
 
-const ChatMessages = ({
-  messages = defaultMessages,
-  isLoading = false,
-  className,
-}: ChatMessagesProps) => {
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
+interface ChatMessagesProps {
+  messages: Message[];
+  isTyping: boolean;
+  allowFeedback?: boolean;
+  messagesEndRef?: React.RefObject<HTMLDivElement>;
+}
 
-  // Auto-scroll to bottom when new messages arrive
+const ChatMessages: React.FC<ChatMessagesProps> = ({
+  messages,
+  isTyping,
+  allowFeedback = true,
+  messagesEndRef,
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to bottom when messages change
   useEffect(() => {
-    if (scrollAreaRef.current) {
-      const scrollArea = scrollAreaRef.current;
-      scrollArea.scrollTop = scrollArea.scrollHeight;
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
-  }, [messages, isLoading]);
+  }, [messages, isTyping]);
+
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const handleFeedback = (messageId: string, isPositive: boolean) => {
+    console.log(
+      `Feedback for message ${messageId}: ${isPositive ? "👍" : "👎"}`,
+    );
+    // In a real implementation, this would send the feedback to the server
+  };
+
   return (
-    <div className={cn("flex-1 bg-white", className)}>
-      <ScrollArea className="h-full p-4" ref={scrollAreaRef}>
-        <div className="flex flex-col space-y-4">
-          {messages.map((message) => (
-            <MessageItem key={message.id} message={message} />
-          ))}
-          {isLoading && <LoadingMessage />}
+    <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={containerRef}>
+      {messages && messages.length > 0
+        ? messages.map((message) => (
+            <div
+              key={message.id}
+              className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+            >
+              <div
+                className={`flex max-w-[80%] ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}
+              >
+                <Avatar className="h-8 w-8 mt-1">
+                  {message.role === "user" ? (
+                    <>
+                      <AvatarImage src="https://api.dicebear.com/7.x/avataaars/svg?seed=user" />
+                      <AvatarFallback>U</AvatarFallback>
+                    </>
+                  ) : (
+                    <>
+                      <AvatarImage src="https://api.dicebear.com/7.x/bottts/svg?seed=assistant" />
+                      <AvatarFallback>AI</AvatarFallback>
+                    </>
+                  )}
+                </Avatar>
+
+                <div
+                  className={`mx-2 ${message.role === "user" ? "items-end" : "items-start"} flex flex-col`}
+                >
+                  <div
+                    className={`rounded-lg p-3 ${message.role === "user" ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"} ${message.status === "error" ? "border border-red-500" : ""}`}
+                    style={{
+                      backgroundColor:
+                        message.role === "user"
+                          ? "var(--primary-color, #4f46e5)"
+                          : "var(--secondary-color, #f3f4f6)",
+                      color:
+                        message.role === "user"
+                          ? "white"
+                          : "var(--text-color, #374151)",
+                      borderRadius: "var(--border-radius, 8px)",
+                    }}
+                  >
+                    {message.content}
+                  </div>
+
+                  <div className="flex items-center mt-1 text-xs text-gray-500">
+                    <span>{formatTime(message.timestamp)}</span>
+                    {message.status === "sending" && (
+                      <span className="ml-2 italic">Sending...</span>
+                    )}
+                    {message.status === "error" && (
+                      <span className="ml-2 text-red-500">Failed to send</span>
+                    )}
+                  </div>
+
+                  {allowFeedback && message.role === "assistant" && (
+                    <div className="flex mt-1 space-x-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => handleFeedback(message.id, true)}
+                      >
+                        <ThumbsUp className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => handleFeedback(message.id, false)}
+                      >
+                        <ThumbsDown className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))
+        : null}
+
+      {isTyping && (
+        <div className="flex justify-start">
+          <div className="flex max-w-[80%]">
+            <Avatar className="h-8 w-8 mt-1">
+              <AvatarImage src="https://api.dicebear.com/7.x/bottts/svg?seed=assistant" />
+              <AvatarFallback>AI</AvatarFallback>
+            </Avatar>
+
+            <div className="mx-2 items-start flex flex-col">
+              <div
+                className="rounded-lg p-3 bg-secondary text-secondary-foreground"
+                style={{
+                  backgroundColor: "var(--secondary-color, #f3f4f6)",
+                  color: "var(--text-color, #374151)",
+                  borderRadius: "var(--border-radius, 8px)",
+                }}
+              >
+                <div className="typing-indicator">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </ScrollArea>
-    </div>
-  );
-};
-
-type MessageItemProps = {
-  message: Message;
-};
-
-const MessageItem = ({ message }: MessageItemProps) => {
-  const isUser = message.sender === "user";
-
-  return (
-    <div
-      className={cn(
-        "flex items-start gap-3 max-w-[85%]",
-        isUser ? "ml-auto" : "mr-auto",
       )}
-    >
-      {!isUser && (
-        <Avatar className="h-8 w-8 bg-primary/10">
-          <Bot className="h-4 w-4 text-primary" />
-        </Avatar>
-      )}
-      <div
-        className={cn(
-          "rounded-lg p-3",
-          isUser
-            ? "bg-primary text-primary-foreground"
-            : "bg-muted text-muted-foreground",
-        )}
-      >
-        <p className="text-sm whitespace-pre-wrap break-words">
-          {message.content}
-        </p>
-        <div className="mt-1 text-xs opacity-70 text-right">
-          {formatMessageTime(message.timestamp)}
-          {message.status === "sending" && " • Sending..."}
-          {message.status === "error" && " • Failed to send"}
+
+      {/* This div is used to scroll to the bottom */}
+      <div ref={messagesEndRef} />
+
+      {/* Show empty state if no messages */}
+      {(!messages || messages.length === 0) && !isTyping && (
+        <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 p-4">
+          <p>Starting conversation...</p>
         </div>
-      </div>
-      {isUser && (
-        <Avatar className="h-8 w-8 bg-primary/10">
-          <User className="h-4 w-4 text-primary" />
-        </Avatar>
       )}
     </div>
   );
 };
-
-const LoadingMessage = () => {
-  return (
-    <div className="flex items-start gap-3 max-w-[85%] mr-auto">
-      <Avatar className="h-8 w-8 bg-primary/10">
-        <Bot className="h-4 w-4 text-primary" />
-      </Avatar>
-      <div className="space-y-2">
-        <Skeleton className="h-4 w-[250px]" />
-        <Skeleton className="h-4 w-[200px]" />
-        <Skeleton className="h-4 w-[170px]" />
-      </div>
-    </div>
-  );
-};
-
-// Helper function to format message timestamp
-const formatMessageTime = (date: Date): string => {
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "numeric",
-    hour12: true,
-  }).format(date);
-};
-
-// Default messages for demonstration
-const defaultMessages: Message[] = [
-  {
-    id: "1",
-    content: "Hello! How can I help you today?",
-    sender: "assistant",
-    timestamp: new Date(Date.now() - 1000 * 60 * 5), // 5 minutes ago
-  },
-  {
-    id: "2",
-    content:
-      "I have a question about embedding this chat widget on my website. How do I get started?",
-    sender: "user",
-    timestamp: new Date(Date.now() - 1000 * 60 * 4), // 4 minutes ago
-  },
-  {
-    id: "3",
-    content:
-      "Great question! You can embed this chat widget using either an iframe or as a Web Component using Shadow DOM. Would you like me to explain both options?",
-    sender: "assistant",
-    timestamp: new Date(Date.now() - 1000 * 60 * 3), // 3 minutes ago
-  },
-  {
-    id: "4",
-    content:
-      "Yes, please explain both options and which one would be better for my WordPress site.",
-    sender: "user",
-    timestamp: new Date(Date.now() - 1000 * 60 * 2), // 2 minutes ago
-  },
-  {
-    id: "5",
-    content:
-      'For WordPress, I recommend using the iframe option as it\'s simpler to implement. Just add this code snippet to your theme or use a custom HTML block:\n\n<iframe src="https://your-chat-domain.com/widget" width="380" height="600" frameborder="0"></iframe>\n\nThe Web Component option gives you more customization but requires JavaScript knowledge. Would you like me to provide that code as well?',
-    sender: "assistant",
-    timestamp: new Date(Date.now() - 1000 * 60), // 1 minute ago
-  },
-];
 
 export default ChatMessages;

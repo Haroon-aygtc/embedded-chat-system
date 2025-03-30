@@ -54,6 +54,7 @@ import {
 import { widgetConfigApi } from "@/services/apiService";
 import { useToast } from "@/components/ui/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import ChatWidget from "@/components/chat/ChatWidget";
 
 // Define the form schema using zod
 const formSchema = z.object({
@@ -108,6 +109,7 @@ const WidgetConfigurator = ({
     "idle",
   );
   const { toast } = useToast();
+  const [previewKey, setPreviewKey] = useState(Date.now());
 
   // Initialize form with default values
   const form = useForm<FormValues>({
@@ -119,6 +121,15 @@ const WidgetConfigurator = ({
   });
 
   const watchedValues = form.watch();
+
+  // Update preview when form values change
+  useEffect(() => {
+    // Use a debounce to avoid too many re-renders
+    const timer = setTimeout(() => {
+      setPreviewKey(Date.now());
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [watchedValues]);
 
   // Fetch existing configuration on component mount
   useEffect(() => {
@@ -758,6 +769,7 @@ const WidgetConfigurator = ({
               }}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.95 }}
+              key={`chat-button-${previewKey}`}
             >
               <MessageSquare size={24} className="text-white" />
               {watchedValues.showNotifications && (
@@ -793,6 +805,7 @@ const WidgetConfigurator = ({
               }}
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
+              key={`chat-expanded-${previewKey}`}
             >
               {/* Chat Header */}
               <div
