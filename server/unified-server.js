@@ -6,25 +6,26 @@
  * - WebSocket server for real-time communication
  * - API server for REST endpoints
  */
+
 import express from "express";
 import http from "http";
 import { WebSocketServer } from "ws";
 import path from "path";
-import fs from "fs";
 import { fileURLToPath } from "url";
 import compression from "compression";
 import cors from "cors";
 import bodyParser from "body-parser";
-import dotenv from "dotenv";
 import { spawn } from "child_process";
+import apiRoutes from "./api/routes/index.js";
+import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
+import requestLogger from "./middleware/requestLogger.js";
+import logger from "./utils/logger.js";
+import { getMySQLClient } from "./services/mysqlClient.js";
 
 // Get directory path for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.join(__dirname, "..");
-
-// Load environment variables
-dotenv.config({ path: path.resolve(rootDir, ".env") });
 
 // Environment detection
 const NODE_ENV = process.env.NODE_ENV || "development";
@@ -32,18 +33,8 @@ const isProd = NODE_ENV === "production";
 
 // Configuration with fallbacks
 const FRONTEND_PORT = process.env.PORT || 5173;
-const WS_PORT = process.env.WS_PORT || 8080;
 const API_PORT = parseInt(process.env.API_PORT || 3001);
 const HOST = process.env.HOST || "0.0.0.0";
-
-// Logging utility
-const logger = {
-  info: (tag, message) => console.log(`\x1b[36m[${tag}] ${message}\x1b[0m`),
-  success: (tag, message) => console.log(`\x1b[32m[${tag}] ${message}\x1b[0m`),
-  warn: (tag, message) => console.log(`\x1b[33m[${tag}] ${message}\x1b[0m`),
-  error: (tag, message) =>
-    console.error(`\x1b[31m[${tag} Error] ${message}\x1b[0m`),
-};
 
 // Track active server processes
 const servers = {
@@ -53,13 +44,15 @@ const servers = {
 // Flag to prevent restarting servers during shutdown
 let shuttingDown = false;
 
-// Check if the dist directory exists for production mode
-if (isProd && !fs.existsSync(path.join(rootDir, "dist"))) {
-  logger.error(
-    "Server",
-    "Production mode requires a built application. Run 'npm run build' first.",
-  );
-  process.exit(1);
+// Initialize database connection
+async function initDatabase() {
+  try {
+    await getMySQLClient();
+    logger.success("Database", "Database connection established");
+  } catch (error) {
+    logger.error("Database", `Failed to connect to database: ${error.message}`);
+    process.exit(1);
+  }
 }
 
 /**
@@ -70,16 +63,26 @@ function createExpressApp() {
 
   // Common middleware
   app.use(cors());
-  app.use(bodyParser.json());
+  app.use(compression());
+  app.use(bodyParser.json({ limit: "10mb" }));
+  app.use(bodyParser.urlencoded({ extended: true, limit: "10mb" }));
+
+  // Add request ID middleware
+  app.use((req, res, next) => {
+    req.headers["x-request-id"] =
+      req.headers["x-request-id"] || crypto.randomUUID();
+    res.setHeader("X-Request-ID", req.headers["x-request-id"]);
+    next();
+  });
+
+  // Add request logger
+  app.use(requestLogger);
 
   // API Routes
-  configureApiRoutes(app);
+  app.use("/api", apiRoutes);
 
   // In production, serve static files
   if (isProd) {
-    // Enable gzip compression
-    app.use(compression());
-
     // Serve static files with cache headers
     app.use(
       express.static(path.join(rootDir, "dist"), {
@@ -97,48 +100,18 @@ function createExpressApp() {
     });
   }
 
-  // Error handling middleware
-  app.use((err, req, res, next) => {
-    logger.error("Express", `Unhandled error: ${err.message}`);
-    res.status(500).json({ error: "Internal server error" });
+  // Health check endpoint
+  app.get("/health", (req, res) => {
+    res.status(200).json({
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      version: process.env.npm_package_version || "1.0.0",
+    });
   });
 
-  return app;
-}
-
-/**
- * Configure API routes
- */
-function configureApiRoutes(app) {
-  // Import API routes
-  import("./api/routes/index.js")
-    .then((module) => {
-      const apiRoutes = module.default;
-
-      // Mount API routes under /api
-      app.use("/api", apiRoutes);
-
-      logger.success("API", "API routes configured successfully");
-    })
-    .catch((error) => {
-      logger.error("API", `Failed to load API routes: ${error.message}`);
-
-      // Fallback to basic routes if API routes fail to load
-      // Health check endpoint
-      app.get("/api/health", (req, res) => {
-        res.status(200).json({
-          success: true,
-          data: {
-            status: "ok",
-            timestamp: new Date().toISOString(),
-            environment: NODE_ENV,
-          },
-          meta: {
-            timestamp: new Date().toISOString(),
-          },
-        });
-      });
-    });
+  // Error handling middleware
+  app.use(notFoundHandler);
+  app.use(errorHandler);
 
   return app;
 }
@@ -329,7 +302,10 @@ function startViteDevServer() {
 /**
  * Start the unified server
  */
-function startUnifiedServer() {
+async function startUnifiedServer() {
+  // Initialize database connection
+  await initDatabase();
+
   // Create Express app
   const app = createExpressApp();
 
@@ -407,7 +383,7 @@ process.on("uncaughtException", (error) => {
 });
 
 // Handle unhandled promise rejections
-process.on("unhandledRejection", (reason, promise) => {
+process.on("unhandledRejection", (reason) => {
   logger.error("Server", `Unhandled promise rejection: ${reason}`);
 
   // In production, keep the server running despite unhandled rejections
@@ -417,6 +393,9 @@ process.on("unhandledRejection", (reason, promise) => {
 });
 
 // Start the unified server
-startUnifiedServer();
+startUnifiedServer().catch((error) => {
+  logger.error("Server", `Failed to start unified server: ${error.message}`);
+  process.exit(1);
+});
 
 logger.success("Server", `Started in ${NODE_ENV} mode`);

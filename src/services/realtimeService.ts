@@ -1,3 +1,10 @@
+/**
+ * Unified Realtime Service
+ *
+ * This service provides real-time updates using WebSockets
+ * It replaces the previous Supabase-based implementation
+ */
+
 import logger from "@/utils/logger";
 import { getMySQLClient } from "./mysqlClient";
 import websocketService from "./websocketService";

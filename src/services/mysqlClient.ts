@@ -1,3 +1,6 @@
+// This is the unified MySQL client implementation that will be used throughout the application
+// The server-side implementation in server/services/mysqlClient.js will be deprecated
+
 import logger from "@/utils/logger";
 import { env } from "@/config/env";
 

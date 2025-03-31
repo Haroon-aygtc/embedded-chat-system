@@ -6,10 +6,14 @@
 
 import express from "express";
 import { v4 as uuidv4 } from "uuid";
-import { getMySQLClient } from "../../services/mysqlClient.js";
+import dbHelpers from "../../utils/dbHelpers.js";
+import { formatSuccess, formatError, sendResponse, errors } from "../../utils/responseFormatter.js";
 import logger from "../../utils/logger.js";
 
 const router = express.Router();
+
+// JSON fields that need to be parsed in context rules
+const jsonFields = ['keywords', 'excluded_topics', 'response_filters', 'knowledge_base_ids'];
 
 /**
  * @route GET /api/context-rules
@@ -17,74 +21,13 @@ const router = express.Router();
  */
 router.get("/", async (req, res) => {
   try {
-    const sequelize = await getMySQLClient();
-    const [results] = await sequelize.query(
-      `SELECT * FROM context_rules WHERE user_id = ? ORDER BY created_at DESC`,
-      {
-        replacements: [req.user.id],
-      }
-    );
-
-    // Process arrays and JSON fields
-    const processedResults = results.map(rule => {
-      // Process keywords array
-      if (rule.keywords && typeof rule.keywords === 'string') {
-        try {
-          rule.keywords = JSON.parse(rule.keywords);
-        } catch (e) {
-          rule.keywords = [];
-        }
-      }
-
-      // Process excluded_topics array
-      if (rule.excluded_topics && typeof rule.excluded_topics === 'string') {
-        try {
-          rule.excluded_topics = JSON.parse(rule.excluded_topics);
-        } catch (e) {
-          rule.excluded_topics = [];
-        }
-      }
-
-      // Process response_filters array
-      if (rule.response_filters && typeof rule.response_filters === 'string') {
-        try {
-          rule.response_filters = JSON.parse(rule.response_filters);
-        } catch (e) {
-          rule.response_filters = [];
-        }
-      }
-
-      // Process knowledge_base_ids array
-      if (rule.knowledge_base_ids && typeof rule.knowledge_base_ids === 'string') {
-        try {
-          rule.knowledge_base_ids = JSON.parse(rule.knowledge_base_ids);
-        } catch (e) {
-          rule.knowledge_base_ids = [];
-        }
-      }
-
-      return rule;
-    });
-
-    return res.status(200).json({
-      success: true,
-      data: processedResults,
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    const results = await dbHelpers.findByCondition('context_rules', { user_id: req.user.id }, { orderBy: 'created_at DESC' });
+    const processedResults = dbHelpers.processJsonFields(results, jsonFields);
+    
+    return sendResponse(res, formatSuccess(processedResults));
   } catch (error) {
     logger.error("Error fetching context rules:", error);
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: "ERR_INTERNAL_SERVER",
-        message: "Failed to fetch context rules",
-      },
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(res, errors.internal("Failed to fetch context rules"));
   }
 });
 
@@ -94,85 +37,17 @@ router.get("/", async (req, res) => {
  */
 router.get("/:id", async (req, res) => {
   try {
-    const sequelize = await getMySQLClient();
-    const [results] = await sequelize.query(
-      `SELECT * FROM context_rules WHERE id = ? AND user_id = ?`,
-      {
-        replacements: [req.params.id, req.user.id],
-      }
-    );
+    const results = await dbHelpers.findByCondition('context_rules', { id: req.params.id, user_id: req.user.id });
 
     if (!results || results.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: {
-          code: "ERR_NOT_FOUND",
-          message: "Context rule not found",
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
+      return sendResponse(res, errors.notFound("Context rule not found"));
     }
 
-    // Process arrays and JSON fields
-    const rule = results[0];
-    
-    // Process keywords array
-    if (rule.keywords && typeof rule.keywords === 'string') {
-      try {
-        rule.keywords = JSON.parse(rule.keywords);
-      } catch (e) {
-        rule.keywords = [];
-      }
-    }
-
-    // Process excluded_topics array
-    if (rule.excluded_topics && typeof rule.excluded_topics === 'string') {
-      try {
-        rule.excluded_topics = JSON.parse(rule.excluded_topics);
-      } catch (e) {
-        rule.excluded_topics = [];
-      }
-    }
-
-    // Process response_filters array
-    if (rule.response_filters && typeof rule.response_filters === 'string') {
-      try {
-        rule.response_filters = JSON.parse(rule.response_filters);
-      } catch (e) {
-        rule.response_filters = [];
-      }
-    }
-
-    // Process knowledge_base_ids array
-    if (rule.knowledge_base_ids && typeof rule.knowledge_base_ids === 'string') {
-      try {
-        rule.knowledge_base_ids = JSON.parse(rule.knowledge_base_ids);
-      } catch (e) {
-        rule.knowledge_base_ids = [];
-      }
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: rule,
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    const rule = dbHelpers.processJsonFields(results[0], jsonFields);
+    return sendResponse(res, formatSuccess(rule));
   } catch (error) {
     logger.error(`Error fetching context rule ${req.params.id}:`, error);
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: "ERR_INTERNAL_SERVER",
-        message: "Failed to fetch context rule",
-      },
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(res, errors.internal("Failed to fetch context rule"));
   }
 });
 
@@ -197,116 +72,39 @@ router.post("/", async (req, res) => {
     } = req.body;
 
     if (!name || !context_type) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: "ERR_VALIDATION",
-          message: "Name and context_type are required",
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
+      return sendResponse(res, errors.validation("Name and context_type are required"));
     }
 
     const ruleId = uuidv4();
-    const sequelize = await getMySQLClient();
+    const data = {
+      id: ruleId,
+      name,
+      description: description || "",
+      is_active: is_active !== undefined ? is_active : true,
+      context_type,
+      keywords: keywords ? JSON.stringify(keywords) : null,
+      excluded_topics: excluded_topics ? JSON.stringify(excluded_topics) : null,
+      prompt_template: prompt_template || "",
+      response_filters: response_filters ? JSON.stringify(response_filters) : null,
+      use_knowledge_bases: use_knowledge_bases !== undefined ? use_knowledge_bases : false,
+      knowledge_base_ids: knowledge_base_ids ? JSON.stringify(knowledge_base_ids) : null,
+      preferred_model: preferred_model || null,
+      version: 1, // Initial version
+      user_id: req.user.id,
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
 
-    await sequelize.query(
-      `INSERT INTO context_rules (
-        id, name, description, is_active, context_type, keywords, 
-        excluded_topics, prompt_template, response_filters, 
-        use_knowledge_bases, knowledge_base_ids, preferred_model, 
-        version, user_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      {
-        replacements: [
-          ruleId,
-          name,
-          description || "",
-          is_active !== undefined ? is_active : true,
-          context_type,
-          keywords ? JSON.stringify(keywords) : null,
-          excluded_topics ? JSON.stringify(excluded_topics) : null,
-          prompt_template || "",
-          response_filters ? JSON.stringify(response_filters) : null,
-          use_knowledge_bases !== undefined ? use_knowledge_bases : false,
-          knowledge_base_ids ? JSON.stringify(knowledge_base_ids) : null,
-          preferred_model || null,
-          1, // Initial version
-          req.user.id,
-          new Date(),
-          new Date(),
-        ],
-      }
-    );
+    await dbHelpers.insert('context_rules', data);
 
     // Fetch the created context rule
-    const [results] = await sequelize.query(
-      `SELECT * FROM context_rules WHERE id = ?`,
-      {
-        replacements: [ruleId],
-      }
-    );
+    const result = await dbHelpers.findById('context_rules', ruleId);
+    const processedRule = dbHelpers.processJsonFields(result, jsonFields);
 
-    // Process arrays and JSON fields
-    const rule = results[0];
-    
-    // Process keywords array
-    if (rule.keywords && typeof rule.keywords === 'string') {
-      try {
-        rule.keywords = JSON.parse(rule.keywords);
-      } catch (e) {
-        rule.keywords = [];
-      }
-    }
-
-    // Process excluded_topics array
-    if (rule.excluded_topics && typeof rule.excluded_topics === 'string') {
-      try {
-        rule.excluded_topics = JSON.parse(rule.excluded_topics);
-      } catch (e) {
-        rule.excluded_topics = [];
-      }
-    }
-
-    // Process response_filters array
-    if (rule.response_filters && typeof rule.response_filters === 'string') {
-      try {
-        rule.response_filters = JSON.parse(rule.response_filters);
-      } catch (e) {
-        rule.response_filters = [];
-      }
-    }
-
-    // Process knowledge_base_ids array
-    if (rule.knowledge_base_ids && typeof rule.knowledge_base_ids === 'string') {
-      try {
-        rule.knowledge_base_ids = JSON.parse(rule.knowledge_base_ids);
-      } catch (e) {
-        rule.knowledge_base_ids = [];
-      }
-    }
-
-    return res.status(201).json({
-      success: true,
-      data: rule,
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(res, formatSuccess(processedRule, { status: 201 }));
   } catch (error) {
     logger.error("Error creating context rule:", error);
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: "ERR_INTERNAL_SERVER",
-        message: "Failed to create context rule",
-      },
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(res, errors.internal("Failed to create context rule"));
   }
 });
 
@@ -330,185 +128,46 @@ router.put("/:id", async (req, res) => {
       preferred_model,
     } = req.body;
 
-    const sequelize = await getMySQLClient();
-
     // Check if context rule exists and belongs to user
-    const [checkResults] = await sequelize.query(
-      `SELECT * FROM context_rules WHERE id = ? AND user_id = ?`,
-      {
-        replacements: [req.params.id, req.user.id],
-      }
-    );
+    const rule = await dbHelpers.findByCondition('context_rules', { id: req.params.id, user_id: req.user.id });
 
-    if (!checkResults || checkResults.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: {
-          code: "ERR_NOT_FOUND",
-          message: "Context rule not found or you don't have permission to update it",
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
+    if (!rule || rule.length === 0) {
+      return sendResponse(res, errors.notFound("Context rule not found or you don't have permission to update it"));
     }
 
-    // Build update query dynamically based on provided fields
-    let updateFields = [];
-    let replacements = [];
+    // Build update data object
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
+    if (is_active !== undefined) updateData.is_active = is_active;
+    if (context_type !== undefined) updateData.context_type = context_type;
+    if (keywords !== undefined) updateData.keywords = JSON.stringify(keywords);
+    if (excluded_topics !== undefined) updateData.excluded_topics = JSON.stringify(excluded_topics);
+    if (prompt_template !== undefined) updateData.prompt_template = prompt_template;
+    if (response_filters !== undefined) updateData.response_filters = JSON.stringify(response_filters);
+    if (use_knowledge_bases !== undefined) updateData.use_knowledge_bases = use_knowledge_bases;
+    if (knowledge_base_ids !== undefined) updateData.knowledge_base_ids = JSON.stringify(knowledge_base_ids);
+    if (preferred_model !== undefined) updateData.preferred_model = preferred_model;
 
-    if (name !== undefined) {
-      updateFields.push("name = ?");
-      replacements.push(name);
+    // Increment version and update timestamp
+    updateData.version = rule[0].version + 1;
+    updateData.updated_at = new Date();
+
+    if (Object.keys(updateData).length === 2) { // Only version and updated_at
+      return sendResponse(res, errors.validation("No fields to update"));
     }
 
-    if (description !== undefined) {
-      updateFields.push("description = ?");
-      replacements.push(description);
-    }
-
-    if (is_active !== undefined) {
-      updateFields.push("is_active = ?");
-      replacements.push(is_active);
-    }
-
-    if (context_type !== undefined) {
-      updateFields.push("context_type = ?");
-      replacements.push(context_type);
-    }
-
-    if (keywords !== undefined) {
-      updateFields.push("keywords = ?");
-      replacements.push(JSON.stringify(keywords));
-    }
-
-    if (excluded_topics !== undefined) {
-      updateFields.push("excluded_topics = ?");
-      replacements.push(JSON.stringify(excluded_topics));
-    }
-
-    if (prompt_template !== undefined) {
-      updateFields.push("prompt_template = ?");
-      replacements.push(prompt_template);
-    }
-
-    if (response_filters !== undefined) {
-      updateFields.push("response_filters = ?");
-      replacements.push(JSON.stringify(response_filters));
-    }
-
-    if (use_knowledge_bases !== undefined) {
-      updateFields.push("use_knowledge_bases = ?");
-      replacements.push(use_knowledge_bases);
-    }
-
-    if (knowledge_base_ids !== undefined) {
-      updateFields.push("knowledge_base_ids = ?");
-      replacements.push(JSON.stringify(knowledge_base_ids));
-    }
-
-    if (preferred_model !== undefined) {
-      updateFields.push("preferred_model = ?");
-      replacements.push(preferred_model);
-    }
-
-    // Increment version
-    updateFields.push("version = version + 1");
-
-    // Always update the updated_at timestamp
-    updateFields.push("updated_at = ?");
-    replacements.push(new Date());
-
-    // Add the ID as the last replacement
-    replacements.push(req.params.id);
-
-    if (updateFields.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: "ERR_VALIDATION",
-          message: "No fields to update",
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
-    }
-
-    // Execute the update query
-    await sequelize.query(
-      `UPDATE context_rules SET ${updateFields.join(", ")} WHERE id = ?`,
-      {
-        replacements,
-      }
-    );
+    // Execute the update
+    await dbHelpers.update('context_rules', updateData, { id: req.params.id });
 
     // Fetch the updated context rule
-    const [results] = await sequelize.query(
-      `SELECT * FROM context_rules WHERE id = ?`,
-      {
-        replacements: [req.params.id],
-      }
-    );
+    const updatedRule = await dbHelpers.findById('context_rules', req.params.id);
+    const processedRule = dbHelpers.processJsonFields(updatedRule, jsonFields);
 
-    // Process arrays and JSON fields
-    const rule = results[0];
-    
-    // Process keywords array
-    if (rule.keywords && typeof rule.keywords === 'string') {
-      try {
-        rule.keywords = JSON.parse(rule.keywords);
-      } catch (e) {
-        rule.keywords = [];
-      }
-    }
-
-    // Process excluded_topics array
-    if (rule.excluded_topics && typeof rule.excluded_topics === 'string') {
-      try {
-        rule.excluded_topics = JSON.parse(rule.excluded_topics);
-      } catch (e) {
-        rule.excluded_topics = [];
-      }
-    }
-
-    // Process response_filters array
-    if (rule.response_filters && typeof rule.response_filters === 'string') {
-      try {
-        rule.response_filters = JSON.parse(rule.response_filters);
-      } catch (e) {
-        rule.response_filters = [];
-      }
-    }
-
-    // Process knowledge_base_ids array
-    if (rule.knowledge_base_ids && typeof rule.knowledge_base_ids === 'string') {
-      try {
-        rule.knowledge_base_ids = JSON.parse(rule.knowledge_base_ids);
-      } catch (e) {
-        rule.knowledge_base_ids = [];
-      }
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: rule,
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(res, formatSuccess(processedRule));
   } catch (error) {
     logger.error(`Error updating context rule ${req.params.id}:`, error);
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: "ERR_INTERNAL_SERVER",
-        message: "Failed to update context rule",
-      },
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(res, errors.internal("Failed to update context rule"));
   }
 });
 
@@ -518,74 +177,30 @@ router.put("/:id", async (req, res) => {
  */
 router.delete("/:id", async (req, res) => {
   try {
-    const sequelize = await getMySQLClient();
-
     // Check if context rule exists and belongs to user
-    const [checkResults] = await sequelize.query(
-      `SELECT * FROM context_rules WHERE id = ? AND user_id = ?`,
-      {
-        replacements: [req.params.id, req.user.id],
-      }
-    );
+    const rule = await dbHelpers.findByCondition('context_rules', { id: req.params.id, user_id: req.user.id });
 
-    if (!checkResults || checkResults.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: {
-          code: "ERR_NOT_FOUND",
-          message: "Context rule not found or you don't have permission to delete it",
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
+    if (!rule || rule.length === 0) {
+      return sendResponse(res, errors.notFound("Context rule not found or you don't have permission to delete it"));
     }
 
     // Check if the context rule is used by any widget configurations
-    const [widgetCheck] = await sequelize.query(
+    const widgetCheck = await dbHelpers.executeQuery(
       `SELECT COUNT(*) as count FROM widget_configs WHERE context_rule_id = ?`,
-      {
-        replacements: [req.params.id],
-      }
+      [req.params.id]
     );
 
     if (widgetCheck[0].count > 0) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: "ERR_RULE_IN_USE",
-          message: "This context rule is currently in use by one or more widget configurations",
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
+      return sendResponse(res, errors.badRequest("This context rule is currently in use by one or more widget configurations", { code: "ERR_RULE_IN_USE" }));
     }
 
     // Delete the context rule
-    await sequelize.query(`DELETE FROM context_rules WHERE id = ?`, {
-      replacements: [req.params.id],
-    });
+    await dbHelpers.remove('context_rules', { id: req.params.id });
 
-    return res.status(200).json({
-      success: true,
-      data: null,
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(res, formatSuccess(null));
   } catch (error) {
     logger.error(`Error deleting context rule ${req.params.id}:`, error);
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: "ERR_INTERNAL_SERVER",
-        message: "Failed to delete context rule",
-      },
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(res, errors.internal("Failed to delete context rule"));
   }
 });
 

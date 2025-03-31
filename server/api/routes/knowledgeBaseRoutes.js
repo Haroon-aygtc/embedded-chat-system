@@ -6,10 +6,19 @@
 
 import express from "express";
 import { v4 as uuidv4 } from "uuid";
-import { getMySQLClient } from "../../services/mysqlClient.js";
+import dbHelpers from "../../utils/dbHelpers.js";
+import {
+  formatSuccess,
+  formatError,
+  sendResponse,
+  errors,
+} from "../../utils/responseFormatter.js";
 import logger from "../../utils/logger.js";
 
 const router = express.Router();
+
+// JSON fields that need to be parsed in knowledge bases
+const jsonFields = ["settings", "metadata"];
 
 /**
  * @route GET /api/knowledge-base
@@ -17,33 +26,20 @@ const router = express.Router();
  */
 router.get("/", async (req, res) => {
   try {
-    const sequelize = await getMySQLClient();
-    const [results] = await sequelize.query(
-      `SELECT * FROM knowledge_bases WHERE user_id = ? ORDER BY created_at DESC`,
-      {
-        replacements: [req.user.id],
-      },
+    const results = await dbHelpers.findByCondition(
+      "knowledge_bases",
+      { user_id: req.user.id },
+      { orderBy: "created_at DESC" },
     );
+    const processedResults = dbHelpers.processJsonFields(results, jsonFields);
 
-    return res.status(200).json({
-      success: true,
-      data: results,
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(res, formatSuccess(processedResults));
   } catch (error) {
     logger.error("Error fetching knowledge bases:", error);
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: "ERR_INTERNAL_SERVER",
-        message: "Failed to fetch knowledge bases",
-      },
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(
+      res,
+      errors.internal("Failed to fetch knowledge bases"),
+    );
   }
 });
 
@@ -53,46 +49,20 @@ router.get("/", async (req, res) => {
  */
 router.get("/:id", async (req, res) => {
   try {
-    const sequelize = await getMySQLClient();
-    const [results] = await sequelize.query(
-      `SELECT * FROM knowledge_bases WHERE id = ? AND user_id = ?`,
-      {
-        replacements: [req.params.id, req.user.id],
-      },
-    );
+    const results = await dbHelpers.findByCondition("knowledge_bases", {
+      id: req.params.id,
+      user_id: req.user.id,
+    });
 
     if (!results || results.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: {
-          code: "ERR_NOT_FOUND",
-          message: "Knowledge base not found",
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
+      return sendResponse(res, errors.notFound("Knowledge base not found"));
     }
 
-    return res.status(200).json({
-      success: true,
-      data: results[0],
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    const knowledgeBase = dbHelpers.processJsonFields(results[0], jsonFields);
+    return sendResponse(res, formatSuccess(knowledgeBase));
   } catch (error) {
     logger.error(`Error fetching knowledge base ${req.params.id}:`, error);
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: "ERR_INTERNAL_SERVER",
-        message: "Failed to fetch knowledge base",
-      },
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(res, errors.internal("Failed to fetch knowledge base"));
   }
 });
 
@@ -105,68 +75,35 @@ router.post("/", async (req, res) => {
     const { name, description, source_type, content_type, settings } = req.body;
 
     if (!name) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: "ERR_VALIDATION",
-          message: "Name is required",
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
+      return sendResponse(res, errors.validation("Name is required"));
     }
 
     const knowledgeBaseId = uuidv4();
-    const sequelize = await getMySQLClient();
+    const data = {
+      id: knowledgeBaseId,
+      name,
+      description: description || "",
+      user_id: req.user.id,
+      source_type: source_type || "manual",
+      content_type: content_type || "text",
+      settings: settings ? JSON.stringify(settings) : null,
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
 
-    await sequelize.query(
-      `INSERT INTO knowledge_bases (
-        id, name, description, user_id, source_type, content_type, 
-        settings, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      {
-        replacements: [
-          knowledgeBaseId,
-          name,
-          description || "",
-          req.user.id,
-          source_type || "manual",
-          content_type || "text",
-          settings ? JSON.stringify(settings) : null,
-          new Date(),
-          new Date(),
-        ],
-      },
-    );
+    await dbHelpers.insert("knowledge_bases", data);
 
     // Fetch the created knowledge base
-    const [results] = await sequelize.query(
-      `SELECT * FROM knowledge_bases WHERE id = ?`,
-      {
-        replacements: [knowledgeBaseId],
-      },
-    );
+    const result = await dbHelpers.findById("knowledge_bases", knowledgeBaseId);
+    const processedResult = dbHelpers.processJsonFields(result, jsonFields);
 
-    return res.status(201).json({
-      success: true,
-      data: results[0],
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(res, formatSuccess(processedResult, { status: 201 }));
   } catch (error) {
     logger.error("Error creating knowledge base:", error);
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: "ERR_INTERNAL_SERVER",
-        message: "Failed to create knowledge base",
-      },
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(
+      res,
+      errors.internal("Failed to create knowledge base"),
+    );
   }
 });
 
@@ -184,119 +121,61 @@ router.put("/:id", async (req, res) => {
       settings,
       is_active,
     } = req.body;
-    const sequelize = await getMySQLClient();
 
     // Check if knowledge base exists and belongs to user
-    const [checkResults] = await sequelize.query(
-      `SELECT * FROM knowledge_bases WHERE id = ? AND user_id = ?`,
-      {
-        replacements: [req.params.id, req.user.id],
-      },
-    );
+    const knowledgeBase = await dbHelpers.findByCondition("knowledge_bases", {
+      id: req.params.id,
+      user_id: req.user.id,
+    });
 
-    if (!checkResults || checkResults.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: {
-          code: "ERR_NOT_FOUND",
-          message:
-            "Knowledge base not found or you don't have permission to update it",
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
+    if (!knowledgeBase || knowledgeBase.length === 0) {
+      return sendResponse(
+        res,
+        errors.notFound(
+          "Knowledge base not found or you don't have permission to update it",
+        ),
+      );
     }
 
-    // Build update query dynamically based on provided fields
-    let updateFields = [];
-    let replacements = [];
-
-    if (name !== undefined) {
-      updateFields.push("name = ?");
-      replacements.push(name);
-    }
-
-    if (description !== undefined) {
-      updateFields.push("description = ?");
-      replacements.push(description);
-    }
-
-    if (source_type !== undefined) {
-      updateFields.push("source_type = ?");
-      replacements.push(source_type);
-    }
-
-    if (content_type !== undefined) {
-      updateFields.push("content_type = ?");
-      replacements.push(content_type);
-    }
-
-    if (settings !== undefined) {
-      updateFields.push("settings = ?");
-      replacements.push(JSON.stringify(settings));
-    }
-
-    if (is_active !== undefined) {
-      updateFields.push("is_active = ?");
-      replacements.push(is_active);
-    }
+    // Build update data object
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
+    if (source_type !== undefined) updateData.source_type = source_type;
+    if (content_type !== undefined) updateData.content_type = content_type;
+    if (settings !== undefined) updateData.settings = JSON.stringify(settings);
+    if (is_active !== undefined) updateData.is_active = is_active;
 
     // Always update the updated_at timestamp
-    updateFields.push("updated_at = ?");
-    replacements.push(new Date());
+    updateData.updated_at = new Date();
 
-    // Add the ID as the last replacement
-    replacements.push(req.params.id);
-
-    if (updateFields.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: "ERR_VALIDATION",
-          message: "No fields to update",
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
+    if (Object.keys(updateData).length === 1) {
+      // Only updated_at
+      return sendResponse(res, errors.validation("No fields to update"));
     }
 
-    // Execute the update query
-    await sequelize.query(
-      `UPDATE knowledge_bases SET ${updateFields.join(", ")} WHERE id = ?`,
-      {
-        replacements,
-      },
-    );
+    // Execute the update
+    await dbHelpers.update("knowledge_bases", updateData, {
+      id: req.params.id,
+    });
 
     // Fetch the updated knowledge base
-    const [results] = await sequelize.query(
-      `SELECT * FROM knowledge_bases WHERE id = ?`,
-      {
-        replacements: [req.params.id],
-      },
+    const updatedKnowledgeBase = await dbHelpers.findById(
+      "knowledge_bases",
+      req.params.id,
+    );
+    const processedResult = dbHelpers.processJsonFields(
+      updatedKnowledgeBase,
+      jsonFields,
     );
 
-    return res.status(200).json({
-      success: true,
-      data: results[0],
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(res, formatSuccess(processedResult));
   } catch (error) {
     logger.error(`Error updating knowledge base ${req.params.id}:`, error);
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: "ERR_INTERNAL_SERVER",
-        message: "Failed to update knowledge base",
-      },
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(
+      res,
+      errors.internal("Failed to update knowledge base"),
+    );
   }
 });
 
@@ -306,62 +185,36 @@ router.put("/:id", async (req, res) => {
  */
 router.delete("/:id", async (req, res) => {
   try {
-    const sequelize = await getMySQLClient();
-
     // Check if knowledge base exists and belongs to user
-    const [checkResults] = await sequelize.query(
-      `SELECT * FROM knowledge_bases WHERE id = ? AND user_id = ?`,
-      {
-        replacements: [req.params.id, req.user.id],
-      },
-    );
+    const knowledgeBase = await dbHelpers.findByCondition("knowledge_bases", {
+      id: req.params.id,
+      user_id: req.user.id,
+    });
 
-    if (!checkResults || checkResults.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: {
-          code: "ERR_NOT_FOUND",
-          message:
-            "Knowledge base not found or you don't have permission to delete it",
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
+    if (!knowledgeBase || knowledgeBase.length === 0) {
+      return sendResponse(
+        res,
+        errors.notFound(
+          "Knowledge base not found or you don't have permission to delete it",
+        ),
+      );
     }
 
     // Delete all documents in the knowledge base first
-    await sequelize.query(
-      `DELETE FROM knowledge_base_documents WHERE knowledge_base_id = ?`,
-      {
-        replacements: [req.params.id],
-      },
-    );
+    await dbHelpers.remove("knowledge_base_documents", {
+      knowledge_base_id: req.params.id,
+    });
 
     // Delete the knowledge base
-    await sequelize.query(`DELETE FROM knowledge_bases WHERE id = ?`, {
-      replacements: [req.params.id],
-    });
+    await dbHelpers.remove("knowledge_bases", { id: req.params.id });
 
-    return res.status(200).json({
-      success: true,
-      data: null,
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(res, formatSuccess(null));
   } catch (error) {
     logger.error(`Error deleting knowledge base ${req.params.id}:`, error);
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: "ERR_INTERNAL_SERVER",
-        message: "Failed to delete knowledge base",
-      },
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(
+      res,
+      errors.internal("Failed to delete knowledge base"),
+    );
   }
 });
 
@@ -375,93 +228,57 @@ router.post("/:id/documents", async (req, res) => {
     const knowledgeBaseId = req.params.id;
 
     if (!content) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: "ERR_VALIDATION",
-          message: "Content is required",
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
+      return sendResponse(res, errors.validation("Content is required"));
     }
 
-    const sequelize = await getMySQLClient();
-
     // Check if knowledge base exists and belongs to user
-    const [checkResults] = await sequelize.query(
-      `SELECT * FROM knowledge_bases WHERE id = ? AND user_id = ?`,
-      {
-        replacements: [knowledgeBaseId, req.user.id],
-      },
-    );
+    const knowledgeBase = await dbHelpers.findByCondition("knowledge_bases", {
+      id: knowledgeBaseId,
+      user_id: req.user.id,
+    });
 
-    if (!checkResults || checkResults.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: {
-          code: "ERR_NOT_FOUND",
-          message:
-            "Knowledge base not found or you don't have permission to add documents",
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
+    if (!knowledgeBase || knowledgeBase.length === 0) {
+      return sendResponse(
+        res,
+        errors.notFound(
+          "Knowledge base not found or you don't have permission to add documents",
+        ),
+      );
     }
 
     const documentId = uuidv4();
+    const data = {
+      id: documentId,
+      knowledge_base_id: knowledgeBaseId,
+      title: title || "",
+      content,
+      source_url: source_url || "",
+      metadata: metadata ? JSON.stringify(metadata) : null,
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
 
-    await sequelize.query(
-      `INSERT INTO knowledge_base_documents (
-        id, knowledge_base_id, title, content, source_url, 
-        metadata, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      {
-        replacements: [
-          documentId,
-          knowledgeBaseId,
-          title || "",
-          content,
-          source_url || "",
-          metadata ? JSON.stringify(metadata) : null,
-          new Date(),
-          new Date(),
-        ],
-      },
-    );
+    await dbHelpers.insert("knowledge_base_documents", data);
 
     // Fetch the created document
-    const [results] = await sequelize.query(
-      `SELECT * FROM knowledge_base_documents WHERE id = ?`,
-      {
-        replacements: [documentId],
-      },
+    const document = await dbHelpers.findById(
+      "knowledge_base_documents",
+      documentId,
     );
+    const processedDocument = dbHelpers.processJsonFields(document, [
+      "metadata",
+    ]);
 
-    return res.status(201).json({
-      success: true,
-      data: results[0],
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(res, formatSuccess(processedDocument, { status: 201 }));
   } catch (error) {
     logger.error(
       `Error adding document to knowledge base ${req.params.id}:`,
       error,
     );
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: "ERR_INTERNAL_SERVER",
-        message: "Failed to add document to knowledge base",
-      },
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(
+      res,
+      errors.internal("Failed to add document to knowledge base"),
+    );
   }
 });
 
@@ -472,28 +289,20 @@ router.post("/:id/documents", async (req, res) => {
 router.get("/:id/documents", async (req, res) => {
   try {
     const knowledgeBaseId = req.params.id;
-    const sequelize = await getMySQLClient();
 
     // Check if knowledge base exists and belongs to user
-    const [checkResults] = await sequelize.query(
-      `SELECT * FROM knowledge_bases WHERE id = ? AND user_id = ?`,
-      {
-        replacements: [knowledgeBaseId, req.user.id],
-      },
-    );
+    const knowledgeBase = await dbHelpers.findByCondition("knowledge_bases", {
+      id: knowledgeBaseId,
+      user_id: req.user.id,
+    });
 
-    if (!checkResults || checkResults.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: {
-          code: "ERR_NOT_FOUND",
-          message:
-            "Knowledge base not found or you don't have permission to view documents",
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
+    if (!knowledgeBase || knowledgeBase.length === 0) {
+      return sendResponse(
+        res,
+        errors.notFound(
+          "Knowledge base not found or you don't have permission to view documents",
+        ),
+      );
     }
 
     // Fetch documents with pagination
@@ -501,54 +310,45 @@ router.get("/:id/documents", async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const offset = (page - 1) * limit;
 
-    const [documents] = await sequelize.query(
-      `SELECT * FROM knowledge_base_documents 
-       WHERE knowledge_base_id = ? 
-       ORDER BY created_at DESC 
-       LIMIT ? OFFSET ?`,
-      {
-        replacements: [knowledgeBaseId, limit, offset],
-      },
+    const documents = await dbHelpers.findByCondition(
+      "knowledge_base_documents",
+      { knowledge_base_id: knowledgeBaseId },
+      { orderBy: "created_at DESC", limit, offset },
     );
 
     // Get total count for pagination
-    const [countResult] = await sequelize.query(
+    const countResult = await dbHelpers.executeQuery(
       `SELECT COUNT(*) as count FROM knowledge_base_documents WHERE knowledge_base_id = ?`,
-      {
-        replacements: [knowledgeBaseId],
-      },
+      [knowledgeBaseId],
     );
 
     const totalCount = countResult[0].count;
+    const processedDocuments = dbHelpers.processJsonFields(documents, [
+      "metadata",
+    ]);
 
-    return res.status(200).json({
-      success: true,
-      data: documents,
-      meta: {
-        timestamp: new Date().toISOString(),
-        pagination: {
-          total: totalCount,
-          page,
-          limit,
-          pages: Math.ceil(totalCount / limit),
+    return sendResponse(
+      res,
+      formatSuccess(processedDocuments, {
+        meta: {
+          pagination: {
+            total: totalCount,
+            page,
+            limit,
+            pages: Math.ceil(totalCount / limit),
+          },
         },
-      },
-    });
+      }),
+    );
   } catch (error) {
     logger.error(
       `Error fetching documents from knowledge base ${req.params.id}:`,
       error,
     );
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: "ERR_INTERNAL_SERVER",
-        message: "Failed to fetch documents from knowledge base",
-      },
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(
+      res,
+      errors.internal("Failed to fetch documents from knowledge base"),
+    );
   }
 });
 
@@ -559,79 +359,48 @@ router.get("/:id/documents", async (req, res) => {
 router.delete("/:id/documents/:documentId", async (req, res) => {
   try {
     const { id: knowledgeBaseId, documentId } = req.params;
-    const sequelize = await getMySQLClient();
 
     // Check if knowledge base exists and belongs to user
-    const [checkResults] = await sequelize.query(
-      `SELECT * FROM knowledge_bases WHERE id = ? AND user_id = ?`,
-      {
-        replacements: [knowledgeBaseId, req.user.id],
-      },
-    );
+    const knowledgeBase = await dbHelpers.findByCondition("knowledge_bases", {
+      id: knowledgeBaseId,
+      user_id: req.user.id,
+    });
 
-    if (!checkResults || checkResults.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: {
-          code: "ERR_NOT_FOUND",
-          message:
-            "Knowledge base not found or you don't have permission to delete documents",
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
+    if (!knowledgeBase || knowledgeBase.length === 0) {
+      return sendResponse(
+        res,
+        errors.notFound(
+          "Knowledge base not found or you don't have permission to delete documents",
+        ),
+      );
     }
 
     // Check if document exists in the knowledge base
-    const [documentCheck] = await sequelize.query(
-      `SELECT * FROM knowledge_base_documents 
-       WHERE id = ? AND knowledge_base_id = ?`,
-      {
-        replacements: [documentId, knowledgeBaseId],
-      },
+    const document = await dbHelpers.findByCondition(
+      "knowledge_base_documents",
+      { id: documentId, knowledge_base_id: knowledgeBaseId },
     );
 
-    if (!documentCheck || documentCheck.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: {
-          code: "ERR_NOT_FOUND",
-          message: "Document not found in the specified knowledge base",
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
+    if (!document || document.length === 0) {
+      return sendResponse(
+        res,
+        errors.notFound("Document not found in the specified knowledge base"),
+      );
     }
 
     // Delete the document
-    await sequelize.query(`DELETE FROM knowledge_base_documents WHERE id = ?`, {
-      replacements: [documentId],
-    });
+    await dbHelpers.remove("knowledge_base_documents", { id: documentId });
 
-    return res.status(200).json({
-      success: true,
-      data: null,
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(res, formatSuccess(null));
   } catch (error) {
     logger.error(
       `Error deleting document ${req.params.documentId} from knowledge base ${req.params.id}:`,
       error,
     );
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: "ERR_INTERNAL_SERVER",
-        message: "Failed to delete document from knowledge base",
-      },
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(
+      res,
+      errors.internal("Failed to delete document from knowledge base"),
+    );
   }
 });
 
@@ -644,49 +413,32 @@ router.post("/query", async (req, res) => {
     const { query, knowledgeBaseIds, limit = 5 } = req.body;
 
     if (!query) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: "ERR_VALIDATION",
-          message: "Query is required",
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
+      return sendResponse(res, errors.validation("Query is required"));
     }
 
-    const sequelize = await getMySQLClient();
     let queryResults = [];
 
     // If specific knowledge base IDs are provided, query only those
     if (knowledgeBaseIds && knowledgeBaseIds.length > 0) {
       // Verify user has access to these knowledge bases
-      const [accessCheck] = await sequelize.query(
-        `SELECT id FROM knowledge_bases 
-         WHERE id IN (?) AND (user_id = ? OR is_public = true)`,
-        {
-          replacements: [knowledgeBaseIds, req.user.id],
-        },
+      const accessCheck = await dbHelpers.executeQuery(
+        `SELECT id FROM knowledge_bases WHERE id IN (?) AND (user_id = ? OR is_public = true)`,
+        [knowledgeBaseIds, req.user.id],
       );
 
       const accessibleIds = accessCheck.map((kb) => kb.id);
 
       if (accessibleIds.length === 0) {
-        return res.status(403).json({
-          success: false,
-          error: {
-            code: "ERR_FORBIDDEN",
-            message: "You don't have access to the specified knowledge bases",
-          },
-          meta: {
-            timestamp: new Date().toISOString(),
-          },
-        });
+        return sendResponse(
+          res,
+          errors.forbidden(
+            "You don't have access to the specified knowledge bases",
+          ),
+        );
       }
 
       // Perform a simple text search (in production, you'd use a vector database or search engine)
-      const [results] = await sequelize.query(
+      queryResults = await dbHelpers.executeQuery(
         `SELECT d.*, kb.name as knowledge_base_name 
          FROM knowledge_base_documents d
          JOIN knowledge_bases kb ON d.knowledge_base_id = kb.id
@@ -699,21 +451,11 @@ router.post("/query", async (req, res) => {
            END,
            LENGTH(d.content) ASC
          LIMIT ?`,
-        {
-          replacements: [
-            accessibleIds,
-            `%${query}%`,
-            `%${query}%`,
-            `%${query}%`,
-            limit,
-          ],
-        },
+        [accessibleIds, `%${query}%`, `%${query}%`, `%${query}%`, limit],
       );
-
-      queryResults = results;
     } else {
       // Query all knowledge bases the user has access to
-      const [results] = await sequelize.query(
+      queryResults = await dbHelpers.executeQuery(
         `SELECT d.*, kb.name as knowledge_base_name 
          FROM knowledge_base_documents d
          JOIN knowledge_bases kb ON d.knowledge_base_id = kb.id
@@ -726,18 +468,8 @@ router.post("/query", async (req, res) => {
            END,
            LENGTH(d.content) ASC
          LIMIT ?`,
-        {
-          replacements: [
-            req.user.id,
-            `%${query}%`,
-            `%${query}%`,
-            `%${query}%`,
-            limit,
-          ],
-        },
+        [req.user.id, `%${query}%`, `%${query}%`, `%${query}%`, limit],
       );
-
-      queryResults = results;
     }
 
     // Format the results
@@ -753,43 +485,32 @@ router.post("/query", async (req, res) => {
     }));
 
     // Log the query for analytics
-    await sequelize.query(
-      `INSERT INTO knowledge_base_query_logs (
-        id, user_id, query, results_count, knowledge_base_ids, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?)`,
-      {
-        replacements: [
-          uuidv4(),
-          req.user.id,
-          query,
-          formattedResults.length,
-          knowledgeBaseIds ? JSON.stringify(knowledgeBaseIds) : null,
-          new Date(),
-        ],
-      },
-    );
-
-    return res.status(200).json({
-      success: true,
-      data: formattedResults,
-      meta: {
-        timestamp: new Date().toISOString(),
-        query,
-        resultsCount: formattedResults.length,
-      },
+    await dbHelpers.insert("knowledge_base_query_logs", {
+      id: uuidv4(),
+      user_id: req.user.id,
+      query,
+      results_count: formattedResults.length,
+      knowledge_base_ids: knowledgeBaseIds
+        ? JSON.stringify(knowledgeBaseIds)
+        : null,
+      created_at: new Date(),
     });
+
+    return sendResponse(
+      res,
+      formatSuccess(formattedResults, {
+        meta: {
+          query,
+          resultsCount: formattedResults.length,
+        },
+      }),
+    );
   } catch (error) {
     logger.error("Error querying knowledge bases:", error);
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: "ERR_INTERNAL_SERVER",
-        message: "Failed to query knowledge bases",
-      },
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
+    return sendResponse(
+      res,
+      errors.internal("Failed to query knowledge bases"),
+    );
   }
 });
 
