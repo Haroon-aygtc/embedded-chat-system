@@ -51,7 +51,7 @@ import {
 import scrappingService, {
   ScrapeOptions,
   ScrapeResult,
-} from "@/services/scrappingService";
+} from "@/services/mysqlScrappingService";
 
 const ScrappingModule: React.FC = () => {
   const [activeTab, setActiveTab] = useState("new");
@@ -130,7 +130,7 @@ const ScrappingModule: React.FC = () => {
 
   const loadJobs = async () => {
     try {
-      const allJobs = scrappingService.getAllJobs();
+      const allJobs = await scrappingService.getAllJobs();
       setJobs(allJobs);
     } catch (err: any) {
       console.error("Error loading jobs:", err);
@@ -164,10 +164,10 @@ const ScrappingModule: React.FC = () => {
     setPreviewTab("text");
   };
 
-  const handleDeleteJob = (jobId: string) => {
+  const handleDeleteJob = async (jobId: string) => {
     try {
-      scrappingService.deleteJob(jobId);
-      loadJobs();
+      await scrappingService.deleteJob(jobId);
+      await loadJobs();
       setSuccess("Job deleted successfully");
 
       // If the deleted job is currently selected, clear the selection

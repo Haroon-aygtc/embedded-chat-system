@@ -14,6 +14,7 @@ import widgetRoutes from "./widgetRoutes.js";
 import aiRoutes from "./aiRoutes.js";
 import promptTemplateRoutes from "./promptTemplateRoutes.js";
 import responseFormatRoutes from "./responseFormatRoutes.js";
+import scrapeRoutes from "./scrapeRoutes.js";
 import {
   authenticateJWT,
   authenticateOptional,
@@ -48,6 +49,7 @@ router.use("/widget-configs", authenticateJWT, widgetRoutes);
 router.use("/ai", authenticateJWT, aiRoutes);
 router.use("/prompt-templates", authenticateJWT, promptTemplateRoutes);
 router.use("/response-formats", authenticateJWT, responseFormatRoutes);
+router.use("/scrape", authenticateJWT, scrapeRoutes);
 
 // 404 handler for API routes
 router.use((req, res) => {

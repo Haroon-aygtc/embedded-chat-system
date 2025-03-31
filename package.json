@@ -9,7 +9,8 @@
     "build-no-errors": "tsc ; vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "dev:all": "node server/unified-server.js"
+    "dev:all": "node server/unified-server.js",
+    "migrate": "node scripts/run-migrations.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
@@ -52,14 +53,17 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
     "compression": "^1.8.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "date-fns": "^3.6.0",
     "dotenv": "^16.4.7",
     "embla-carousel-react": "^8.1.5",
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
     "framer-motion": "^11.18.0",
     "fs": "^0.0.1-security",
+    "helmet": "^8.1.0",
     "http": "^0.0.1-security",
     "jsdom": "^26.0.0",
     "json2csv": "^6.0.0-alpha.2",
