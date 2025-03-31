@@ -97,7 +97,7 @@ function createExpressApp() {
   // Rate limiting
   const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per windowMs
+    max: process.env.NODE_ENV === "production" ? 50 : 100, // More strict in production
     standardHeaders: true,
     legacyHeaders: false,
     message: {
@@ -170,8 +170,9 @@ function createExpressApp() {
     // Serve static files with cache headers
     app.use(
       express.static(path.join(rootDir, "dist"), {
-        maxAge: "1d",
+        maxAge: "7d", // Increase cache time for production
         etag: true,
+        immutable: true, // Add immutable for hashed assets
       }),
     );
 
