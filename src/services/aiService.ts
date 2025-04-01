@@ -5,11 +5,6 @@ import logger from "@/utils/logger";
 import { AIInteractionLog } from "@/models";
 import aiModelFactory from "./ai/aiModelFactory";
 import { AIModelRequest, AIModelResponse } from "./ai/types";
-import knowledgeBaseService, {
-  KnowledgeBaseResult,
-} from "./knowledgeBaseService";
-import promptTemplateService from "./promptTemplateService";
-import responseFormatService from "./responseFormatService";
 
 interface AIInteractionLogsParams {
   page: number;
@@ -31,7 +26,6 @@ interface GenerateResponseOptions {
   preferredModel?: string;
   maxTokens?: number;
   temperature?: number;
-  responseFormatId?: string;
   additionalParams?: Record<string, any>;
 }
 
@@ -39,25 +33,6 @@ interface ModelPerformanceParams {
   timeRange?: string;
   startDate?: string;
   endDate?: string;
-}
-
-interface ContextRule {
-  id: string;
-  name: string;
-  description?: string;
-  prompt_template_id?: string;
-  knowledge_base_ids?: string[];
-  system_prompt?: string;
-  allowed_domains?: string[];
-  blocked_domains?: string[];
-  allowed_topics?: string[];
-  blocked_topics?: string[];
-  response_format_id?: string;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-  user_id?: string;
-  metadata?: Record<string, any>;
 }
 
 const aiService = {
@@ -71,29 +46,6 @@ const aiService = {
       // Try to generate via API first
       try {
         const response = await axios.post("/api/ai/generate", options);
-        let formattedContent = response.data.content;
-
-        // Apply response format if specified
-        if (options.responseFormatId) {
-          try {
-            formattedContent = await responseFormatService.applyFormat({
-              formatId: options.responseFormatId,
-              variables: {
-                content: response.data.content,
-                query: options.query,
-                userId: options.userId,
-                ...options.additionalParams,
-              },
-            });
-
-            // Update the response content with formatted content
-            response.data.content = formattedContent;
-            response.data.formatted = true;
-          } catch (formatError) {
-            logger.error("Error applying response format:", formatError);
-            // Continue with unformatted content if formatting fails
-          }
-        }
 
         // Log the interaction
         await aiService.logInteraction({
@@ -104,11 +56,7 @@ const aiService = {
           contextRuleId: options.contextRuleId,
           knowledgeBaseResults: response.data.knowledgeBaseResults || 0,
           knowledgeBaseIds: response.data.knowledgeBaseIds || [],
-          metadata: {
-            ...response.data.metadata,
-            formatted: response.data.formatted || false,
-            responseFormatId: options.responseFormatId,
-          },
+          metadata: response.data.metadata,
         });
 
         return response.data;
@@ -118,51 +66,36 @@ const aiService = {
           apiError,
         );
 
-        // Process the query with knowledge base and prompt templates
-        const enhancedRequest =
-          await aiService.enhanceRequestWithContext(options);
-
         // Convert options to AIModelRequest format
         const modelRequest: AIModelRequest = {
-          query: enhancedRequest.query,
+          query: options.query,
           contextRuleId: options.contextRuleId,
           userId: options.userId,
-          knowledgeBaseIds: enhancedRequest.knowledgeBaseIds,
+          knowledgeBaseIds: options.knowledgeBaseIds,
           promptTemplate: options.promptTemplate,
-          systemPrompt: enhancedRequest.systemPrompt,
+          systemPrompt: options.systemPrompt,
           preferredModel: options.preferredModel,
           maxTokens: options.maxTokens,
           temperature: options.temperature,
-          additionalParams: {
-            ...options.additionalParams,
-            knowledgeBaseResults: enhancedRequest.knowledgeBaseResults,
-          },
+          additionalParams: options.additionalParams,
         };
 
         // Generate response using the AI model factory
         const response = await aiModelFactory.generateResponse(modelRequest);
 
-        // Enhance the response with metadata about knowledge base usage
-        const enhancedResponse: AIModelResponse = {
-          ...response,
-          knowledgeBaseResults:
-            enhancedRequest.knowledgeBaseResults?.length || 0,
-          knowledgeBaseIds: enhancedRequest.knowledgeBaseIds || [],
-        };
-
         // Log the interaction
         await aiService.logInteraction({
           userId: options.userId,
           query: options.query,
-          response: enhancedResponse.content,
-          modelUsed: enhancedResponse.modelUsed,
+          response: response.content,
+          modelUsed: response.modelUsed,
           contextRuleId: options.contextRuleId,
-          knowledgeBaseResults: enhancedResponse.knowledgeBaseResults || 0,
-          knowledgeBaseIds: enhancedResponse.knowledgeBaseIds || [],
-          metadata: enhancedResponse.metadata,
+          knowledgeBaseResults: response.knowledgeBaseResults || 0,
+          knowledgeBaseIds: response.knowledgeBaseIds || [],
+          metadata: response.metadata,
         });
 
-        return enhancedResponse;
+        return response;
       }
     } catch (error) {
       logger.error("Error generating AI response:", error);
@@ -191,128 +124,6 @@ const aiService = {
       }
 
       return fallbackResponse;
-    }
-  },
-
-  /**
-   * Enhance a request with context from knowledge bases and prompt templates
-   */
-  enhanceRequestWithContext: async (
-    options: GenerateResponseOptions,
-  ): Promise<{
-    query: string;
-    systemPrompt: string;
-    knowledgeBaseIds?: string[];
-    knowledgeBaseResults?: KnowledgeBaseResult[];
-  }> => {
-    try {
-      let systemPrompt = options.systemPrompt || "";
-      let knowledgeBaseIds = options.knowledgeBaseIds || [];
-      let knowledgeBaseResults: KnowledgeBaseResult[] = [];
-      let responseFormatId = options.responseFormatId;
-
-      // If a context rule is specified, get its configuration
-      if (options.contextRuleId) {
-        const contextRule = await aiService.getContextRule(
-          options.contextRuleId,
-        );
-        if (contextRule) {
-          // Use the context rule's system prompt if available
-          if (contextRule.system_prompt) {
-            systemPrompt = contextRule.system_prompt;
-          }
-
-          // Use the context rule's knowledge base IDs if available
-          if (
-            contextRule.knowledge_base_ids &&
-            contextRule.knowledge_base_ids.length > 0
-          ) {
-            knowledgeBaseIds = Array.isArray(contextRule.knowledge_base_ids)
-              ? contextRule.knowledge_base_ids
-              : contextRule.knowledge_base_ids.split(",");
-          }
-
-          // Use the context rule's response format ID if available
-          if (contextRule.response_format_id) {
-            responseFormatId = contextRule.response_format_id;
-          }
-
-          // Apply prompt template if specified in the context rule
-          if (contextRule.prompt_template_id) {
-            const templateResult = await promptTemplateService.applyTemplate({
-              templateId: contextRule.prompt_template_id,
-              variables: {
-                query: options.query,
-                userId: options.userId,
-                ...options.additionalParams,
-              },
-              defaultSystemPrompt: systemPrompt,
-            });
-
-            if (templateResult) {
-              systemPrompt = templateResult;
-            }
-          }
-        }
-      }
-
-      // Query knowledge bases if any are specified
-      if (knowledgeBaseIds.length > 0) {
-        knowledgeBaseResults = await knowledgeBaseService.query({
-          query: options.query,
-          contextRuleId: options.contextRuleId,
-          userId: options.userId,
-          limit: 5, // Limit to top 5 results
-        });
-
-        // If we got results, enhance the system prompt with them
-        if (knowledgeBaseResults.length > 0) {
-          const contextContent = knowledgeBaseResults
-            .map(
-              (result, index) =>
-                `[${index + 1}] ${result.content} (Source: ${result.source})`,
-            )
-            .join("\n\n");
-
-          systemPrompt = `${systemPrompt}\n\nRelevant context information:\n${contextContent}\n\nPlease use the above information to answer the following question. If the information doesn't contain the answer, say so and provide your best response based on your general knowledge.`;
-        }
-      }
-
-      return {
-        query: options.query,
-        systemPrompt,
-        knowledgeBaseIds,
-        knowledgeBaseResults,
-        responseFormatId,
-      };
-    } catch (error) {
-      logger.error("Error enhancing request with context:", error);
-      return {
-        query: options.query,
-        systemPrompt: options.systemPrompt || "",
-        knowledgeBaseIds: options.knowledgeBaseIds,
-      };
-    }
-  },
-
-  /**
-   * Get a context rule by ID
-   */
-  getContextRule: async (id: string): Promise<ContextRule | null> => {
-    try {
-      const sequelize = await getMySQLClient();
-      const [results] = await sequelize.query(
-        `SELECT * FROM context_rules WHERE id = ?`,
-        {
-          replacements: [id],
-        },
-      );
-
-      if (!results || (results as any[]).length === 0) return null;
-      return (results as any[])[0] as ContextRule;
-    } catch (error) {
-      logger.error(`Error fetching context rule ${id}:`, error);
-      return null;
     }
   },
 
@@ -358,12 +169,11 @@ const aiService = {
               data.modelUsed,
               data.contextRuleId || null,
               data.knowledgeBaseResults || 0,
-              data.knowledgeBaseIds
-                ? JSON.stringify(data.knowledgeBaseIds)
-                : null,
+              data.knowledgeBaseIds ? data.knowledgeBaseIds.join(",") : null,
               data.metadata ? JSON.stringify(data.metadata) : null,
               new Date(),
             ],
+            type: sequelize.QueryTypes.INSERT,
           },
         );
 
@@ -447,87 +257,6 @@ const aiService = {
         avgResponseTimes: [],
         dailyUsage: [],
         timeRange,
-      };
-    }
-  },
-
-  /**
-   * Get AI interaction logs
-   */
-  getInteractionLogs: async (params: AIInteractionLogsParams) => {
-    try {
-      const sequelize = await getMySQLClient();
-
-      // Build the query with conditions
-      let query = `SELECT * FROM ai_interaction_logs`;
-      const conditions = [];
-      const replacements = [];
-
-      if (params.query) {
-        conditions.push(`(query LIKE ? OR response LIKE ?)`);
-        const searchTerm = `%${params.query}%`;
-        replacements.push(searchTerm, searchTerm);
-      }
-
-      if (params.modelUsed) {
-        conditions.push(`model_used = ?`);
-        replacements.push(params.modelUsed);
-      }
-
-      if (params.contextRuleId) {
-        conditions.push(`context_rule_id = ?`);
-        replacements.push(params.contextRuleId);
-      }
-
-      if (params.startDate) {
-        conditions.push(`created_at >= ?`);
-        replacements.push(params.startDate);
-      }
-
-      if (params.endDate) {
-        conditions.push(`created_at <= ?`);
-        replacements.push(params.endDate);
-      }
-
-      if (conditions.length > 0) {
-        query += ` WHERE ${conditions.join(" AND ")}`;
-      }
-
-      // Add ordering
-      query += ` ORDER BY created_at DESC`;
-
-      // Add pagination
-      query += ` LIMIT ? OFFSET ?`;
-      replacements.push(params.pageSize, (params.page - 1) * params.pageSize);
-
-      // Execute the query
-      const [logs] = await sequelize.query(query, { replacements });
-
-      // Get total count for pagination
-      let countQuery = `SELECT COUNT(*) as count FROM ai_interaction_logs`;
-      if (conditions.length > 0) {
-        countQuery += ` WHERE ${conditions.join(" AND ")}`;
-      }
-
-      const [countResult] = await sequelize.query(countQuery, {
-        replacements: replacements.slice(0, replacements.length - 2), // Remove limit and offset
-      });
-
-      const count = (countResult as any[])[0].count;
-
-      return {
-        logs: logs || [],
-        total: count || 0,
-        page: params.page,
-        pageSize: params.pageSize,
-      };
-    } catch (error) {
-      logger.error("Error getting AI interaction logs:", error);
-      return {
-        logs: [],
-        total: 0,
-        page: params.page,
-        pageSize: params.pageSize,
       };
     }
   },

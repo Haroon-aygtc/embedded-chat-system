@@ -1,12 +1,8 @@
-/**
- * Unified MySQL Client
- *
- * This is the single source of truth for MySQL connections throughout the application.
- * It provides a consistent interface for both server and client environments.
- */
+// This is the unified MySQL client implementation that will be used throughout the application
+// The server-side implementation in server/services/mysqlClient.js will be deprecated
 
 import logger from "@/utils/logger";
-import { databaseConfig, getConnectionConfig } from "@/config/database";
+import { env } from "@/config/env";
 
 // Define a type for the Sequelize-like interface
 export interface SequelizeLike {
@@ -87,29 +83,42 @@ export const initMySQL = async (): Promise<SequelizeLike> => {
     try {
       // Dynamically import Sequelize only on the server side
       const { Sequelize } = await import("sequelize");
-      const connectionConfig = getConnectionConfig();
 
-      if (typeof connectionConfig === "string") {
+      const mysqlUrl = env.MYSQL_URL;
+      const mysqlUser = env.MYSQL_USER;
+      const mysqlPassword = env.MYSQL_PASSWORD;
+      const mysqlDatabase = env.MYSQL_DATABASE;
+
+      if (!mysqlUrl && (!mysqlUser || !mysqlPassword || !mysqlDatabase)) {
+        throw new Error("MySQL connection details are required");
+      }
+
+      if (mysqlUrl) {
         // Use connection URL if provided
-        sequelize = new Sequelize(connectionConfig, {
-          logging: databaseConfig.debug ? console.log : false,
-          dialect: databaseConfig.client,
-          pool: databaseConfig.pool,
+        sequelize = new Sequelize(mysqlUrl, {
+          logging: env.NODE_ENV === "development" ? console.log : false,
+          dialect: "mysql",
+          pool: {
+            max: 10,
+            min: 0,
+            acquire: 30000,
+            idle: 10000,
+          },
         });
       } else {
         // Use individual connection parameters
-        sequelize = new Sequelize(
-          connectionConfig.database,
-          connectionConfig.user,
-          connectionConfig.password,
-          {
-            host: connectionConfig.host,
-            port: connectionConfig.port,
-            dialect: databaseConfig.client,
-            logging: databaseConfig.debug ? console.log : false,
-            pool: databaseConfig.pool,
+        sequelize = new Sequelize(mysqlDatabase, mysqlUser, mysqlPassword, {
+          host: env.MYSQL_HOST || "localhost",
+          port: parseInt(env.MYSQL_PORT || "3306"),
+          dialect: "mysql",
+          logging: env.NODE_ENV === "development" ? console.log : false,
+          pool: {
+            max: 10,
+            min: 0,
+            acquire: 30000,
+            idle: 10000,
           },
-        );
+        });
       }
 
       // Test the connection

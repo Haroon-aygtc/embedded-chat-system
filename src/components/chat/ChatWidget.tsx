@@ -3,12 +3,11 @@ import ChatHeader from "./ChatHeader";
 import ChatMessages from "./ChatMessages";
 import ChatInput from "./ChatInput";
 import { Button } from "@/components/ui/button";
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, X } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { chatService } from "@/services/chatService";
 import { useAuth } from "@/context/AuthContext";
 import { useWebSocket } from "@/hooks/useWebSocket";
-import axios from "axios";
 
 interface ChatWidgetProps {
   config?: any;
@@ -66,13 +65,14 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
     if (widgetId && !previewMode) {
       loadWidgetConfig();
     }
-  }, [widgetId, previewMode]);
+  }, [widgetId]);
 
   const loadWidgetConfig = async () => {
     try {
       // Load widget configuration from the server
-      const response = await axios.get(`/api/widget/${widgetId}/config`);
-      if (response.status === 200) {
+      const response = await fetch(`/api/widget/${widgetId}/config`);
+      if (response.ok) {
+        const data = await response.json();
         // Update the widget configuration
         // This would be handled by the parent component in a real implementation
       }
@@ -91,12 +91,12 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
   // Handle WebSocket messages
   useEffect(() => {
     if (lastMessage && lastMessage.type === "chat_message" && sessionId) {
-      if (lastMessage.sessionId && lastMessage.sessionId === sessionId) {
+      if (lastMessage.sessionId === sessionId) {
         // Add the message to the chat
-        if (lastMessage.role === "assistant" && lastMessage.content) {
+        if (lastMessage.role === "assistant") {
           setIsTyping(false);
           setMessages((prev) => [
-            ...(prev || []),
+            ...prev,
             {
               id: lastMessage.id || Date.now().toString(),
               content: lastMessage.content,
@@ -107,7 +107,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
         }
       }
     }
-  }, [lastMessage, sessionId]);
+  }, [lastMessage]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -137,8 +137,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
       }
 
       // Create or resume a chat session
-      const userId = user?.id || "anonymous";
-      const session = await chatService.createSession(userId);
+      const session = await chatService.createSession();
       setSessionId(session.id);
 
       // Load previous messages if any
@@ -147,14 +146,12 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
         setMessages(history);
       } else {
         // Send initial message
-        if (connected) {
-          sendMessage({
-            type: "chat_message",
-            sessionId: session.id,
-            content: widgetConfig.initialMessage,
-            role: "assistant",
-          });
-        }
+        sendMessage({
+          type: "chat_message",
+          sessionId: session.id,
+          content: widgetConfig.initialMessage,
+          role: "assistant",
+        });
 
         setMessages([
           {
@@ -200,7 +197,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
     };
 
     // Add the message to the UI immediately
-    setMessages((prev) => [...(prev || []), newMessage]);
+    setMessages((prev) => [...prev, newMessage]);
 
     // In preview mode, simulate a response
     if (previewMode) {
@@ -208,7 +205,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
       setTimeout(() => {
         setIsTyping(false);
         setMessages((prev) => [
-          ...(prev || []),
+          ...prev,
           {
             id: (Date.now() + 1).toString(),
             content:
@@ -224,11 +221,9 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
     try {
       // Update message status to sent
       setMessages((prev) =>
-        prev && prev.length > 0
-          ? prev.map((msg) =>
-              msg.id === newMessage.id ? { ...msg, status: "sent" } : msg,
-            )
-          : [],
+        prev.map((msg) =>
+          msg.id === newMessage.id ? { ...msg, status: "sent" } : msg,
+        ),
       );
 
       // Show typing indicator
@@ -244,15 +239,10 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
         });
       } else {
         // Fallback to REST API if WebSocket is not connected
-        const userId = user?.id || "anonymous";
-        const response = await chatService.sendMessage(
-          sessionId!,
-          content,
-          userId,
-        );
+        const response = await chatService.sendMessage(sessionId!, content);
         setIsTyping(false);
         setMessages((prev) => [
-          ...(prev || []),
+          ...prev,
           {
             id: response.id,
             content: response.content,
@@ -265,11 +255,9 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
       console.error("Error sending message:", error);
       // Update message status to error
       setMessages((prev) =>
-        prev && prev.length > 0
-          ? prev.map((msg) =>
-              msg.id === newMessage.id ? { ...msg, status: "error" } : msg,
-            )
-          : [],
+        prev.map((msg) =>
+          msg.id === newMessage.id ? { ...msg, status: "error" } : msg,
+        ),
       );
       setIsTyping(false);
       toast({

@@ -40,8 +40,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import aiModelService from "@/services/aiModelService";
-import { getMySQLClient } from "@/services/mysqlClient";
+import aiService from "@/services/aiService";
 import { useAdmin } from "@/context/AdminContext";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -75,9 +74,6 @@ const AIConfiguration = () => {
   const [testQuery, setTestQuery] = useState("What is the current weather?");
   const [testResponse, setTestResponse] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
-  const [dbStatus, setDbStatus] = useState<"connected" | "error" | "checking">(
-    "checking",
-  );
 
   // Models state
   const [availableModels, setAvailableModels] = useState<AIModel[]>([]);
@@ -100,35 +96,21 @@ const AIConfiguration = () => {
 
   // Load data
   useEffect(() => {
-    checkDatabaseConnection();
     loadModels();
     loadModelPerformance();
     // We don't load API keys directly for security reasons
     // Instead we just check which ones are configured
   }, [refreshTrigger]);
 
-  const checkDatabaseConnection = async () => {
-    try {
-      setDbStatus("checking");
-      const sequelize = await getMySQLClient();
-      await sequelize.query("SELECT 1");
-      setDbStatus("connected");
-    } catch (error) {
-      console.error("Database connection error:", error);
-      setDbStatus("error");
-    }
-  };
-
   const loadModels = async () => {
     setIsLoading(true);
     try {
-      const models = await aiModelService.getAvailableModels();
+      const models = await aiService.getAvailableModels();
       setAvailableModels(models);
 
-      // Get default model
-      const defaultModelResult = models.find((m) => m.isDefault);
-      if (defaultModelResult) {
-        setDefaultModel(defaultModelResult.id);
+      const defaultModelInfo = await aiService.getDefaultModel();
+      if (defaultModelInfo) {
+        setDefaultModel(defaultModelInfo.id);
       }
     } catch (error) {
       console.error("Error loading AI models:", error);
@@ -144,8 +126,19 @@ const AIConfiguration = () => {
 
   const loadModelPerformance = async () => {
     try {
-      const performanceData = await aiModelService.getModelPerformance();
-      setModelPerformance(performanceData);
+      const performance = await aiService.getModelPerformance("30d");
+      if (performance && performance.modelUsage) {
+        const formattedPerformance = performance.modelUsage.map(
+          (model: any) => ({
+            modelId: model.modelId,
+            avgResponseTime: model.avgResponseTime || 0,
+            totalRequests: model.count || 0,
+            successRate: model.successRate || 100,
+            lastUsed: model.lastUsed || "Never",
+          }),
+        );
+        setModelPerformance(formattedPerformance);
+      }
     } catch (error) {
       console.error("Error loading model performance:", error);
     }
@@ -154,7 +147,7 @@ const AIConfiguration = () => {
   const handleSetDefaultModel = async (modelId: string) => {
     setIsLoading(true);
     try {
-      const success = await aiModelService.setDefaultModel(modelId);
+      const success = await aiService.setDefaultModel(modelId);
       if (success) {
         setDefaultModel(modelId);
         toast({
@@ -180,11 +173,23 @@ const AIConfiguration = () => {
   const handleSaveApiKeys = async () => {
     setIsLoading(true);
     try {
-      // Save each API key to the database
-      for (const [provider, key] of Object.entries(apiKeys)) {
-        if (key) {
-          await aiModelService.saveApiKey(provider, key);
-        }
+      // Save API keys to environment variables or secure storage
+      const response = await fetch("/api/admin/api-keys", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          gemini: apiKeys.gemini || undefined,
+          huggingFace: apiKeys.huggingFace || undefined,
+          grok: apiKeys.grok || undefined,
+          anthropic: apiKeys.anthropic || undefined,
+          mistral: apiKeys.mistral || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update API keys");
       }
 
       toast({
@@ -220,12 +225,14 @@ const AIConfiguration = () => {
     setTestError(null);
 
     try {
-      const result = await aiModelService.testModel(modelId, testQuery);
-      if (result.success) {
-        setTestResponse(result.response || "No response received");
-      } else {
-        setTestError(result.error || "Unknown error occurred");
-      }
+      // Call the AI service with a real request
+      const response = await aiService.generateResponse({
+        query: testQuery,
+        userId: "admin",
+        preferredModel: modelId,
+      });
+
+      setTestResponse(response.content);
     } catch (error) {
       console.error("Error testing model:", error);
       setTestError(
@@ -251,24 +258,34 @@ const AIConfiguration = () => {
 
     setIsLoading(true);
     try {
-      const success = await aiModelService.updateModelConfig(editingModel.id, {
-        maxTokens: editingModel.maxTokens,
-        temperature: editingModel.temperature,
-        customEndpoint: editingModel.customEndpoint,
-        additionalParams: editingModel.additionalParams,
-      });
+      // Save model configuration to the backend
+      const response = await fetch(
+        `/api/admin/models/${editingModel.id}/config`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            maxTokens: editingModel.maxTokens,
+            temperature: editingModel.temperature,
+            customEndpoint: editingModel.customEndpoint,
+            additionalParams: editingModel.additionalParams,
+          }),
+        },
+      );
 
-      if (success) {
-        toast({
-          title: "Success",
-          description: `${editingModel.name} configuration updated successfully.`,
-        });
-
-        setEditingModel(null);
-        triggerRefresh();
-      } else {
+      if (!response.ok) {
         throw new Error("Failed to update model configuration");
       }
+
+      toast({
+        title: "Success",
+        description: `${editingModel.name} configuration updated successfully.`,
+      });
+
+      setEditingModel(null);
+      triggerRefresh();
     } catch (error) {
       console.error("Error saving model configuration:", error);
       toast({
@@ -300,22 +317,32 @@ const AIConfiguration = () => {
 
     setIsLoading(true);
     try {
-      const modelId = await aiModelService.addCustomModel(name, endpoint);
-      if (modelId) {
-        toast({
-          title: "Custom Model Added",
-          description: `${name} has been added to your available models.`,
-        });
+      const response = await fetch("/api/admin/models/custom", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          endpoint,
+        }),
+      });
 
-        (document.getElementById("customModelName") as HTMLInputElement).value =
-          "";
-        (
-          document.getElementById("customModelEndpoint") as HTMLInputElement
-        ).value = "";
-        triggerRefresh();
-      } else {
+      if (!response.ok) {
         throw new Error("Failed to add custom model");
       }
+
+      toast({
+        title: "Custom Model Added",
+        description: `${name} has been added to your available models.`,
+      });
+
+      (document.getElementById("customModelName") as HTMLInputElement).value =
+        "";
+      (
+        document.getElementById("customModelEndpoint") as HTMLInputElement
+      ).value = "";
+      triggerRefresh();
     } catch (error) {
       console.error("Error adding custom model:", error);
       toast({
@@ -336,20 +363,24 @@ const AIConfiguration = () => {
 
     setIsLoading(true);
     try {
-      const success = await aiModelService.removeModel(
-        model.id,
-        model.provider === "Custom",
-      );
+      const endpoint =
+        model.provider === "Custom"
+          ? `/api/admin/models/custom/${model.id}`
+          : `/api/admin/models/${model.id}/disable`;
 
-      if (success) {
-        toast({
-          title: "Model Removed",
-          description: `${model.name} has been removed from your available models.`,
-        });
-        triggerRefresh();
-      } else {
+      const response = await fetch(endpoint, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
         throw new Error("Failed to remove model");
       }
+
+      toast({
+        title: "Model Removed",
+        description: `${model.name} has been removed from your available models.`,
+      });
+      triggerRefresh();
     } catch (error) {
       console.error("Error removing model:", error);
       toast({
@@ -373,46 +404,15 @@ const AIConfiguration = () => {
             Manage AI models, API keys, and performance settings
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge
-            variant={dbStatus === "connected" ? "default" : "destructive"}
-            className="px-3 py-1"
-          >
-            {dbStatus === "connected" ? (
-              <>
-                <CheckCircle className="w-4 h-4 mr-1" /> Database Connected
-              </>
-            ) : dbStatus === "error" ? (
-              <>
-                <AlertTriangle className="w-4 h-4 mr-1" /> Database Error
-              </>
-            ) : (
-              "Checking Database..."
-            )}
-          </Badge>
-          <Button
-            onClick={() => triggerRefresh()}
-            variant="outline"
-            size="icon"
-            disabled={isLoading}
-          >
-            <RefreshCw
-              className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
-            />
-          </Button>
-        </div>
+        <Button
+          onClick={() => triggerRefresh()}
+          variant="outline"
+          size="icon"
+          disabled={isLoading}
+        >
+          <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+        </Button>
       </div>
-
-      {dbStatus === "error" && (
-        <Alert variant="destructive" className="mb-6">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Database Connection Error</AlertTitle>
-          <AlertDescription>
-            Unable to connect to the database. Please check your database
-            configuration and try again.
-          </AlertDescription>
-        </Alert>
-      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-3">
@@ -839,19 +839,43 @@ const AIConfiguration = () => {
                   />
                 </div>
 
-                <div className="pt-4">
-                  <Button
-                    onClick={handleSaveApiKeys}
-                    disabled={isLoading}
-                    className="w-full"
-                  >
+                <div className="space-y-2 pt-4">
+                  <Label htmlFor="customModelName">Add Custom AI Model</Label>
+                  <div className="grid grid-cols-3 gap-4">
+                    <Input
+                      id="customModelName"
+                      placeholder="Model Name"
+                      className="col-span-1"
+                    />
+                    <Input
+                      id="customModelEndpoint"
+                      placeholder="API Endpoint URL"
+                      className="col-span-1"
+                    />
+                    <Button
+                      variant="outline"
+                      className="col-span-1"
+                      onClick={handleAddCustomModel}
+                      disabled={isLoading}
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Model
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="pt-4 flex justify-end">
+                  <Button onClick={handleSaveApiKeys} disabled={isLoading}>
                     {isLoading ? (
                       <>
                         <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
                         Saving...
                       </>
                     ) : (
-                      "Save API Keys"
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        Save API Keys
+                      </>
                     )}
                   </Button>
                 </div>
@@ -864,7 +888,7 @@ const AIConfiguration = () => {
         <TabsContent value="performance" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Model Performance</CardTitle>
+              <CardTitle>AI Model Performance</CardTitle>
               <CardDescription>
                 View performance metrics for your AI models
               </CardDescription>
@@ -874,8 +898,8 @@ const AIConfiguration = () => {
                 <div className="flex flex-col items-center justify-center py-8">
                   <AlertTriangle className="h-12 w-12 text-yellow-500 mb-4" />
                   <p className="text-center text-muted-foreground">
-                    No performance data available yet. Use your models to
-                    generate data.
+                    No performance data available yet. Start using AI models to
+                    collect metrics.
                   </p>
                 </div>
               ) : (
@@ -890,33 +914,122 @@ const AIConfiguration = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {modelPerformance.map((perf) => (
-                      <TableRow key={perf.modelId}>
-                        <TableCell className="font-medium">
-                          {availableModels.find((m) => m.id === perf.modelId)
-                            ?.name || perf.modelId}
-                        </TableCell>
-                        <TableCell>{perf.totalRequests}</TableCell>
-                        <TableCell>
-                          {perf.avgResponseTime.toFixed(2)}s
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              perf.successRate > 90 ? "default" : "outline"
-                            }
-                          >
-                            {perf.successRate.toFixed(1)}%
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {new Date(perf.lastUsed).toLocaleString()}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {modelPerformance.map((perf) => {
+                      const model = availableModels.find(
+                        (m) => m.id === perf.modelId,
+                      ) || {
+                        name: perf.modelId,
+                        provider: "Unknown",
+                      };
+
+                      return (
+                        <TableRow key={perf.modelId}>
+                          <TableCell className="font-medium">
+                            {model.name}
+                          </TableCell>
+                          <TableCell>
+                            {perf.totalRequests.toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            {perf.avgResponseTime.toFixed(2)}s
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full ${perf.successRate > 95 ? "bg-green-500" : perf.successRate > 80 ? "bg-yellow-500" : "bg-red-500"}`}
+                                  style={{ width: `${perf.successRate}%` }}
+                                />
+                              </div>
+                              <span>{perf.successRate}%</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>{perf.lastUsed}</TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>System Settings</CardTitle>
+              <CardDescription>
+                Configure global AI system settings
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="cacheEnabled">Response Caching</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Cache AI responses to improve performance
+                    </p>
+                  </div>
+                  <Switch id="cacheEnabled" defaultChecked />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="fallbackEnabled">Fallback Model</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Use fallback model when primary model fails
+                    </p>
+                  </div>
+                  <Switch id="fallbackEnabled" defaultChecked />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="loggingLevel">Logging Level</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Set the detail level for AI interaction logs
+                    </p>
+                  </div>
+                  <Select defaultValue="info">
+                    <SelectTrigger className="w-32">
+                      <SelectValue placeholder="Select level" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="error">Error</SelectItem>
+                      <SelectItem value="warn">Warning</SelectItem>
+                      <SelectItem value="info">Info</SelectItem>
+                      <SelectItem value="debug">Debug</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="retentionPeriod">Log Retention</Label>
+                    <p className="text-sm text-muted-foreground">
+                      How long to keep AI interaction logs
+                    </p>
+                  </div>
+                  <Select defaultValue="90">
+                    <SelectTrigger className="w-32">
+                      <SelectValue placeholder="Select period" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="30">30 days</SelectItem>
+                      <SelectItem value="60">60 days</SelectItem>
+                      <SelectItem value="90">90 days</SelectItem>
+                      <SelectItem value="180">180 days</SelectItem>
+                      <SelectItem value="365">1 year</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

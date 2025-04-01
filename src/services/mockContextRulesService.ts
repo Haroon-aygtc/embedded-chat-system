@@ -1,142 +1,51 @@
-import { getMySQLClient } from "./mysqlClient";
 import { v4 as uuidv4 } from "uuid";
-import logger from "@/utils/logger";
+import mockApiService from "./mockApiService";
 
-const contextRulesService = {
+const mockContextRulesService = {
   getContextRules: async () => {
     try {
-      const sequelize = await getMySQLClient();
-      const [results] = await sequelize.query(
-        `SELECT * FROM context_rules ORDER BY name`,
-      );
-
-      return {
-        rules: results || [],
-        totalCount: (results as any[]).length,
-      };
+      const result = await mockApiService.getContextRules();
+      // Ensure we're returning an object with a rules array
+      if (result && result.rules) {
+        return {
+          rules: Array.isArray(result.rules) ? result.rules : [],
+          totalCount: result.totalCount || 0,
+        };
+      }
+      // If result is not in expected format, return empty array
+      return { rules: [], totalCount: 0 };
     } catch (error) {
-      logger.error("Error fetching context rules:", error);
+      console.error("Error fetching context rules:", error);
       return { rules: [], totalCount: 0 };
     }
   },
 
   createContextRule: async (data: any) => {
     try {
-      const sequelize = await getMySQLClient();
-      const id = uuidv4();
-      const now = new Date().toISOString();
-
-      // Convert camelCase to snake_case for database and prepare values
-      const fields = [];
-      const placeholders = [];
-      const values = [];
-
-      fields.push("id");
-      placeholders.push("?");
-      values.push(id);
-
-      fields.push("created_at");
-      placeholders.push("?");
-      values.push(now);
-
-      fields.push("updated_at");
-      placeholders.push("?");
-      values.push(now);
-
-      // Process all other fields from data
-      Object.entries(data).forEach(([key, value]) => {
-        // Convert camelCase to snake_case
-        const dbField = key.replace(/([A-Z])/g, "_$1").toLowerCase();
-        fields.push(dbField);
-        placeholders.push("?");
-
-        // Handle arrays and objects by converting to JSON strings
-        if (typeof value === "object" && value !== null) {
-          values.push(JSON.stringify(value));
-        } else {
-          values.push(value);
-        }
-      });
-
-      await sequelize.query(
-        `INSERT INTO context_rules (${fields.join(", ")}) VALUES (${placeholders.join(", ")})`,
-        { replacements: values },
-      );
-
-      // Fetch the created rule
-      const [results] = await sequelize.query(
-        `SELECT * FROM context_rules WHERE id = ?`,
-        { replacements: [id] },
-      );
-
-      return (results as any[])[0];
+      return await mockApiService.createContextRule(data);
     } catch (error) {
-      logger.error("Error creating context rule:", error);
+      console.error("Error creating context rule:", error);
       throw error;
     }
   },
 
   updateContextRule: async (id: string, data: any) => {
     try {
-      const sequelize = await getMySQLClient();
-      const updateFields = [];
-      const replacements = [];
-
-      // Build dynamic update query
-      Object.entries(data).forEach(([key, value]) => {
-        // Convert camelCase to snake_case for database
-        const dbField = key.replace(/([A-Z])/g, "_$1").toLowerCase();
-        updateFields.push(`${dbField} = ?`);
-
-        // Handle arrays and objects by converting to JSON strings
-        if (typeof value === "object" && value !== null) {
-          replacements.push(JSON.stringify(value));
-        } else {
-          replacements.push(value);
-        }
-      });
-
-      // Add updated_at timestamp
-      updateFields.push("updated_at = ?");
-      replacements.push(new Date().toISOString());
-
-      // Add ID to replacements
-      replacements.push(id);
-
-      await sequelize.query(
-        `UPDATE context_rules SET ${updateFields.join(", ")} WHERE id = ?`,
-        { replacements },
-      );
-
-      // Fetch the updated rule
-      const [results] = await sequelize.query(
-        `SELECT * FROM context_rules WHERE id = ?`,
-        { replacements: [id] },
-      );
-
-      if (!results || (results as any[]).length === 0) {
-        throw new Error(`Context rule with ID ${id} not found`);
-      }
-
-      return (results as any[])[0];
+      return await mockApiService.updateContextRule(id, data);
     } catch (error) {
-      logger.error(`Error updating context rule ${id}:`, error);
+      console.error("Error updating context rule:", error);
       throw error;
     }
   },
 
   deleteContextRule: async (id: string) => {
     try {
-      const sequelize = await getMySQLClient();
-      await sequelize.query(`DELETE FROM context_rules WHERE id = ?`, {
-        replacements: [id],
-      });
-      return { success: true };
+      return await mockApiService.deleteContextRule(id);
     } catch (error) {
-      logger.error(`Error deleting context rule ${id}:`, error);
+      console.error("Error deleting context rule:", error);
       throw error;
     }
   },
 };
 
-export default contextRulesService;
+export default mockContextRulesService;
