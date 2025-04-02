@@ -2,6 +2,9 @@ import React, { useRef, useEffect } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ThumbsUp, ThumbsDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import FormattedMessage from "./FormattedMessage";
+import FollowUpQuestions from "./FollowUpQuestions";
+import { FollowUpConfig } from "@/components/admin/FollowUpQuestionsConfig";
 
 interface Message {
   id: string;
@@ -9,6 +12,7 @@ interface Message {
   role: "user" | "assistant" | "system";
   timestamp: Date;
   status?: "sending" | "sent" | "error";
+  followUpQuestions?: string[];
 }
 
 interface ChatMessagesProps {
@@ -16,6 +20,9 @@ interface ChatMessagesProps {
   isTyping: boolean;
   allowFeedback?: boolean;
   messagesEndRef?: React.RefObject<HTMLDivElement>;
+  enableMarkdown?: boolean;
+  followUpConfig?: FollowUpConfig;
+  onSelectFollowUpQuestion?: (question: string) => void;
 }
 
 const ChatMessages: React.FC<ChatMessagesProps> = ({
@@ -23,6 +30,9 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({
   isTyping,
   allowFeedback = true,
   messagesEndRef,
+  enableMarkdown = false,
+  followUpConfig,
+  onSelectFollowUpQuestion,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -85,8 +95,22 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({
                   borderRadius: "var(--border-radius, 8px)",
                 }}
               >
-                {message.content}
+                {enableMarkdown ? (
+                  <FormattedMessage content={message.content} enableMarkdown={enableMarkdown} />
+                ) : (
+                  message.content
+                )}
               </div>
+              
+              {message.role === "assistant" && message.followUpQuestions && message.followUpQuestions.length > 0 && (
+                <div className="mt-2">
+                  <FollowUpQuestions 
+                    questions={message.followUpQuestions} 
+                    onSelectQuestion={onSelectFollowUpQuestion || (() => {})} 
+                    displayStyle={followUpConfig?.showFollowUpAs || "buttons"} 
+                  />
+                </div>
+              )
 
               <div className="flex items-center mt-1 text-xs text-gray-500">
                 <span>{formatTime(message.timestamp)}</span>
