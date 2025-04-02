@@ -101,16 +101,16 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({
                   message.content
                 )}
               </div>
-              
+
               {message.role === "assistant" && message.followUpQuestions && message.followUpQuestions.length > 0 && (
                 <div className="mt-2">
-                  <FollowUpQuestions 
-                    questions={message.followUpQuestions} 
-                    onSelectQuestion={onSelectFollowUpQuestion || (() => {})} 
-                    displayStyle={followUpConfig?.showFollowUpAs || "buttons"} 
+                  <FollowUpQuestions
+                    questions={message.followUpQuestions}
+                    onSelectQuestion={onSelectFollowUpQuestion || (() => {})}
+                    displayStyle={followUpConfig?.showFollowUpAs || "buttons"}
                   />
                 </div>
-              )
+              )}
 
               <div className="flex items-center mt-1 text-xs text-gray-500">
                 <span>{formatTime(message.timestamp)}</span>
